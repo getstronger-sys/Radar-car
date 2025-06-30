@@ -17,31 +17,23 @@ resolution = map_size_m / map_size  # 每个栅格表示的实际长度（米）
 
 # 初始化空地图（0 表示空地）
 grid_map = np.zeros((map_size, map_size), dtype=np.uint8)
-# 只留一个障碍物
-grid_map[25:30, 25:30] = 1
 
-# 右上角的矩形障碍物
-grid_map[10:15, 35:40] = 1
-
-# 左下角的L形障碍物
-grid_map[5:15, 5:10] = 1
-grid_map[5:10, 10:20] = 1
 
 # ========== 2. DWA配置 ==========
 dwa_config = {
-    'max_speed': 0.3,        # 最大线速度 (m/s) - 降低速度
+    'max_speed': 5,        # 最大线速度 (m/s) - 降低速度
     'min_speed': 0.0,        # 最小线速度 (m/s)
-    'max_yawrate': 0.5,      # 最大角速度 (rad/s) - 降低角速度
-    'max_accel': 0.1,        # 最大加速度 (m/s²) - 降低加速度
-    'max_dyawrate': 0.2,     # 最大角加速度 (rad/s²) - 降低角加速度
+    'max_yawrate': 5,      # 最大角速度 (rad/s) - 降低角速度
+    'max_accel': 5,         # 提高加速度
+    'max_dyawrate': 2,     # 最大角加速度 (rad/s²) - 降低角加速度
     'v_reso': 0.02,          # 线速度分辨率 (m/s) - 提高分辨率
     'yawrate_reso': 0.05,    # 角速度分辨率 (rad/s) - 提高分辨率
     'dt': 0.1,               # 时间步长 (s)
     'predict_time': 3.0,     # 预测时间 (s) - 增加预测时间
-    'to_goal_cost_gain': 2.0,    # 目标代价权重 - 增加权重
+    'to_goal_cost_gain': 1.0,    # 降低目标代价权重
     'speed_cost_gain': 0.05,     # 速度代价权重 - 降低权重
     'obstacle_cost_gain': 1.5,   # 障碍物代价权重 - 增加权重
-    'robot_radius': 0.05,        # 机器人半径 (m) - 减小半径
+    'robot_radius': 0.02,        # 机器人半径 (m) - 减小半径
     'map_resolution': resolution  # 地图分辨率
 }
 
@@ -193,7 +185,7 @@ def plot_dwa_simulation(grid_map, start, goal, path, dwa_trajectory, robot_state
 
 def animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_history):
     """
-    创建DWA仿真的动画
+    创建DWA仿真的动画，并实时显示位置、速度、加速度、距离终点
     """
     fig, ax = plt.subplots(figsize=(10, 8))
     
@@ -240,6 +232,31 @@ def animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_hi
             arrow_dy = arrow_length * np.sin(theta)
             ax.arrow(x, y, arrow_dx, arrow_dy, head_width=0.05, head_length=0.05, 
                     fc='red', ec='red')
+            
+            # ==== 实时数据显示 ====
+            # 速度
+            if frame < len(control_history):
+                v, omega = control_history[frame]
+            else:
+                v, omega = 0.0, 0.0
+            # 加速度
+            if frame > 0 and frame < len(control_history):
+                v_prev, _ = control_history[frame-1]
+                accel = (v - v_prev) / dwa_config['dt']
+            else:
+                accel = 0.0
+            # 距离终点
+            dist_to_goal = np.hypot(x - goal['x'], y - goal['y'])
+            # 文本显示
+            info = (
+                f"Step: {frame}\n"
+                f"Pos: ({x:.2f}, {y:.2f})\n"
+                f"Vel: {v:.2f} m/s\n"
+                f"Accel: {accel:.2f} m/s²\n"
+                f"Dist to Goal: {dist_to_goal:.2f} m"
+            )
+            ax.text(0.02, 0.98, info, transform=ax.transAxes, fontsize=12,
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
         
         ax.set_xlim(0, map_size_m)
         ax.set_ylim(0, map_size_m)
@@ -248,7 +265,6 @@ def animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_hi
         ax.set_title(f'DWA Simulation - Frame {frame}')
         ax.grid(True, alpha=0.3)
         
-        # 返回需要更新的艺术家对象
         return ax.get_children()
     
     anim = FuncAnimation(fig, animate, frames=len(robot_states), 
@@ -366,8 +382,13 @@ def run_dwa_simulation(grid_map, start, goal, max_iterations=1000, goal_threshol
 # ========== 6. 主程序 ==========
 if __name__ == "__main__":
     # 设置起点和终点
-    start = {'x': 0.5, 'y': 0.5}
+    start = {'x': 2.0, 'y': 0.5}
     goal = {'x': 4.5, 'y': 4.5}
+    
+    # 检查起点是否在障碍物内
+    gx = int(start['x'] / resolution)
+    gy = int(start['y'] / resolution)
+    print("起点格子坐标:", gx, gy, "值:", grid_map[gy, gx])
     
     # 运行DWA仿真
     robot_states, control_history, path = run_dwa_simulation(grid_map, start, goal)
@@ -378,6 +399,16 @@ if __name__ == "__main__":
                            robot_states, control_history, animation_mode=False)
         
         # 动画可视化（可选）
-        # animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_history)
+        animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_history)
     else:
-        print("❌ 仿真失败，无法可视化") 
+        print("❌ 仿真失败，无法可视化")
+
+def is_free(pos, grid_map, resolution):
+    gx = int(pos['x'] / resolution)
+    gy = int(pos['y'] / resolution)
+    return grid_map[gy, gx] == 0
+
+if not is_free(start, grid_map, resolution):
+    raise ValueError("起点在障碍物内，请选择空地作为起点！")
+if not is_free(goal, grid_map, resolution):
+    raise ValueError("终点在障碍物内，请选择空地作为终点！") 

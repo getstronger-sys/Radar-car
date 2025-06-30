@@ -155,6 +155,10 @@ python test_dwa_visualization.py
 ### 4. 可视化（`viz/`、`planner/visualize_*.py`）
 - 实时地图、轨迹、路径、机器人状态可视化
 - 支持静态图和动画
+- 支持网页交互及其可视化(终端运行)
+```bash
+streamlit run planner/web_viz.py
+``` 
 
 ### 5. 通信与数据记录
 - 蓝牙串口通信（`comm/bluetooth.py`）

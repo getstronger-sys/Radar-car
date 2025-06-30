@@ -241,129 +241,54 @@ class AutonomousRobot:
         )
     
     def run(self):
-        """运行主控制循环"""
-        print("🚀 开始自主导航任务...")
-        print("   阶段1: 探索未知环境")
-        print("   阶段2: 检测出口点")
-        print("   阶段3: 返回起点")
-        
-        try:
-            while not self.mission_complete:
-                # 获取传感器数据
-                lidar_data, odom_data = self.comm.receive_data()
-                
-                # 更新SLAM
-                try:
-                    scan_distances = [int(d * 1000) for d in lidar_data]  # 转换为毫米
-                    pose_mm, map_bytes = self.slam.update(scan_distances, odom_data)
-                    self.current_pose = list(self.slam.get_current_pose_meters())  # 修复变量名
-                    occupancy_grid = self.slam.get_occupancy_grid()
-                    
-                    # 记录轨迹
-                    self.trajectory.append(self.current_pose.copy())
-                    
-                    # 更新可视化
-                    self.update_visualization(map_bytes, scan_distances)
-                    
-                except Exception as e:
-                    print(f"SLAM更新错误: {e}")
-                    continue
-                
-                # 检测出口
-                if not self.exit_found:
-                    self.detect_exit(occupancy_grid)
-                
-                # 探索阶段
-                if self.exploration_mode and not self.exit_found:
-                    frontiers = detect_frontiers(occupancy_grid, map_resolution=MAP_RESOLUTION)
-                    
-                    if frontiers:
-                        # 规划探索路径
-                        path = self.plan_exploration_path(occupancy_grid, frontiers)
-                        if path:
-                            self.global_path = path
-                            self.path_index = 0
-                    else:
-                        print("📋 未发现前沿点，探索完成")
-                        self.exploration_mode = False
-                
-                # 返回阶段
-                elif self.exit_found and not self.returning_home:
-                    print("🔄 开始返回起点...")
-                    self.returning_home = True
-                    
-                    # 规划返回路径
-                    path = self.plan_return_path(occupancy_grid)
-                    if path:
-                        self.global_path = path
-                        self.path_index = 0
-                    else:
-                        print("❌ 无法规划返回路径")
-                        break
-                
-                # 执行导航
-                if self.global_path and self.path_index < len(self.global_path):
-                    current_target = self.global_path[self.path_index]
-                    
-                    # 执行导航
-                    success = self.execute_navigation(current_target)
-                    
-                    if success:
-                        # 检查是否到达当前目标点
-                        dist = np.hypot(self.current_pose[0] - current_target[0], 
-                                       self.current_pose[1] - current_target[1])
-                        
-                        if dist < 0.1:  # 10cm范围内认为到达
-                            self.path_index += 1
-                            print(f"✅ 到达路径点 {self.path_index-1}/{len(self.global_path)}")
-                            
-                            # 检查是否完成整个路径
-                            if self.path_index >= len(self.global_path):
-                                if self.returning_home:
-                                    self.mission_complete = True
-                                    print("🎉 任务完成！成功返回起点")
-                                else:
-                                    print("📍 到达目标点，继续探索")
-                                    self.global_path = []
-                                    self.path_index = 0
-                
-                # 检查是否到达起点
-                if self.returning_home:
-                    dist_to_home = np.hypot(self.current_pose[0] - self.start_pose[0], 
-                                          self.current_pose[1] - self.start_pose[1])
-                    if dist_to_home < 0.2:  # 20cm范围内认为回到起点
-                        self.mission_complete = True
-                        print("🎉 成功返回起点！任务完成")
-                
-                time.sleep(LOOP_DELAY)
-            
-            # 任务完成后的处理
-            print("\n📊 任务统计:")
-            print(f"   总轨迹长度: {len(self.trajectory)} 个点")
-            print(f"   探索时间: {time.time() - self.start_time:.1f} 秒")
-            if self.exit_found and self.confirmed_exit:  # 添加空值检查
-                print(f"   出口位置: ({self.confirmed_exit[0]:.2f}, {self.confirmed_exit[1]:.2f})")
-            
-            # 保存最终地图
-            self.viz.save_map('final_slam_map.png')
-            
-            # 等待用户确认
-            print("\n按任意键退出...")
-            input()
-            
-        except KeyboardInterrupt:
-            print("\n⏹️ 用户中断任务")
-        except Exception as e:
-            print(f"\n❌ 系统错误: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            # 清理资源
-            self.comm.close()
-            self.logger.save_log()  # 保存日志
-            self.logger.close()
-            self.viz.close()
-            print("🔚 系统已关闭")
+        """主控循环：前沿检测+A*+DWA集成"""
+        print("🚀 启动主控循环...")
+        dwa_planner = self.dwa
+        robot_state = self.current_pose  # [x, y, theta]
+        robot_velocity = [0.0, 0.0]
+        occupancy_grid = np.zeros((100, 100), dtype=np.uint8)  # 示例地图，可替换为SLAM地图
+        MAP_RESOLUTION = 0.1
+        max_steps = 1000
+        trajectory = [robot_state[:]]
+
+        for step in range(max_steps):
+            # 1. 前沿检测
+            frontiers = detect_frontiers(occupancy_grid, map_resolution=MAP_RESOLUTION)
+            if not frontiers:
+                print("探索完成，无前沿点！")
+                break
+            # 2. 选择最近前沿点
+            target_frontier = min(frontiers, key=lambda f: np.hypot(f[0]-robot_state[0], f[1]-robot_state[1]))
+            # 3. 全局路径规划
+            path = plan_path(occupancy_grid, {'x': robot_state[0], 'y': robot_state[1]}, {'x': target_frontier[0], 'y': target_frontier[1]})
+            if not path:
+                print("A*未找到路径，跳过本轮")
+                continue
+            # 4. 取全局路径上的下一个点作为DWA的局部目标
+            local_goal = path[min(5, len(path)-1)]
+            # 5. DWA局部避障
+            v, omega = dwa_planner.plan(robot_state, robot_velocity, local_goal, occupancy_grid)
+            # 6. 机器人运动学更新
+            dt = 0.1
+            robot_state[0] += v * np.cos(robot_state[2]) * dt
+            robot_state[1] += v * np.sin(robot_state[2]) * dt
+            robot_state[2] += omega * dt
+            robot_velocity = [v, omega]
+            trajectory.append(robot_state[:])
+            # 7. 可视化
+            if step % 5 == 0:
+                import matplotlib.pyplot as plt
+                plt.clf()
+                plt.imshow(occupancy_grid, cmap='gray_r', origin='lower')
+                traj_np = np.array(trajectory)
+                plt.plot(traj_np[:,0]/MAP_RESOLUTION, traj_np[:,1]/MAP_RESOLUTION, 'b-')
+                plt.plot(target_frontier[0]/MAP_RESOLUTION, target_frontier[1]/MAP_RESOLUTION, 'ro')
+                plt.pause(0.01)
+            # 8. 判断是否到达目标前沿
+            if np.hypot(robot_state[0]-target_frontier[0], robot_state[1]-target_frontier[1]) < 0.2:
+                print(f"到达前沿点 {target_frontier}")
+                # 可在此处将该前沿点标记为已探索
+        print("主控循环结束")
 
 def main():
     """主函数"""

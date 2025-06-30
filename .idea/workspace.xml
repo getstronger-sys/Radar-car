@@ -5,19 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/maze_robot_project.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/comm/bluetooth.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/exploration/frontier_detect.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/planner/dwa_planner.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/planner/path_planner.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/slam/mapper.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/planner/web_viz.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/planner/dwa_planner.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/dwa_planner.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test_dwa_visualization.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -48,25 +40,40 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Python 测试.Python 测试 (enhanced_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor": "Run",
     "Python 测试.Python 测试 (simple_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (simple_viz_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_frontier_detect.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_slam_exception.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_system.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_system_unittest.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_visualization.py 内).executor": "Run",
     "Python.data_logger.executor": "Run",
+    "Python.demo_complete_system.executor": "Run",
     "Python.dwa_planner.executor": "Run",
     "Python.frontier_detect.executor": "Run",
     "Python.main.executor": "Run",
     "Python.map_viz.executor": "Run",
     "Python.mapper.executor": "Run",
     "Python.matplotlib_viz.executor": "Run",
+    "Python.move_to_pose.executor": "Run",
     "Python.path_planner.executor": "Run",
+    "Python.plot.executor": "Run",
+    "Python.roboviz_slam_demo.executor": "Run",
     "Python.roboviz_slam_viz.executor": "Run",
+    "Python.simple_animation_demo.executor": "Run",
+    "Python.simple_exploration_demo.executor": "Run",
     "Python.simple_test.executor": "Run",
     "Python.slam_demo.executor": "Run",
+    "Python.visualize_dwa_path.executor": "Run",
+    "Python.visualize_path.executor": "Run",
+    "Python.web_viz.executor": "Run",
     "Python.测试.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master"
+    "git-widget-placeholder": "main",
+    "settings.editor.selected.configurable": "vcs.Git"
   }
 }]]></component>
   <component name="SharedIndexes">
@@ -86,5 +93,16 @@
       <updated>1751120701753</updated>
     </task>
     <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

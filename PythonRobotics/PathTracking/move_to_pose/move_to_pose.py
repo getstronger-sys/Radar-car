@@ -10,13 +10,16 @@ Author: Daniel Ingram (daniel-s-ingram)
 P. I. Corke, "Robotics, Vision & Control", Springer 2017, ISBN 978-3-319-54413-7
 
 """
+import sys
+import os
+pythonrobotics_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+if pythonrobotics_root not in sys.path:
+    sys.path.insert(0, pythonrobotics_root)
+print("pythonrobotics_root:", pythonrobotics_root)
+print("sys.path:", sys.path)
 
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
-import pathlib
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from utils.angle import angle_mod
 from random import random
 
