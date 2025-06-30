@@ -6,22 +6,13 @@ import os
 # 添加项目根目录路径，使得可以导入 planner 模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from planner.path_planner import plan_path, smooth_path
+from config.map import get_global_map, MAP_SIZE_M, MAP_RESOLUTION
 
 # ========== 1. 构建地图 ==========
-map_size = 50            # 地图为 50x50 的栅格地图
-map_size_m = 5.0         # 实际物理尺寸为 5.0m x 5.0m
-resolution = map_size_m / map_size  # 每个栅格表示的实际长度（米）
-
-# 初始化空地图（0 表示空地）
-grid_map = np.zeros((map_size, map_size), dtype=np.uint8)
-
-# 添加障碍物：
-# 中心方形障碍物
-grid_map[20:30, 20:30] = 1
-
-# 右上角的矩形障碍物
-grid_map[10:15, 35:40] = 1
-
+grid_map = get_global_map()
+map_size = grid_map.shape[0]
+map_size_m = MAP_SIZE_M
+resolution = MAP_RESOLUTION
 
 # ========== 2. 可视化函数 ==========
 def plot_map(grid_map, start, goal, path=None, smoothed_path=None):

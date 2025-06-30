@@ -10,6 +10,61 @@ import sys
 import os
 from scipy.ndimage import binary_dilation
 
+# ========== 老师给的线段障碍物插入地图 ==========
+try:
+    from skimage.draw import line
+except ImportError:
+    raise ImportError('请先 pip install scikit-image')
+
+map_size = 50
+map_size_m = 15.0
+resolution = map_size_m / map_size
+occupancy_grid = np.zeros((map_size, map_size), dtype=np.uint8)
+
+segments = [
+    {"start": [0, 0], "end": [2, 0]},
+    {"start": [2, 0], "end": [2, 2]},
+    {"start": [0, 0], "end": [0, 15]},
+    {"start": [0, 11], "end": [2, 11]},
+    {"start": [2, 11], "end": [2, 6]},
+    {"start": [2, 6], "end": [4, 6]},
+    {"start": [0, 15], "end": [11, 15]},
+    {"start": [2, 15], "end": [2, 13]},
+    {"start": [2, 13], "end": [9, 13]},
+    {"start": [4, 13], "end": [4, 8]},
+    {"start": [6, 13], "end": [6, 10]},
+    {"start": [6, 10], "end": [9, 10]},
+    {"start": [9, 10], "end": [9, 13]},
+    {"start": [11, 15], "end": [11, 10]},
+    {"start": [4, 0], "end": [4, 2]},
+    {"start": [4, 0], "end": [15, 0]},
+    {"start": [11, 0], "end": [11, 2]},
+    {"start": [11, 2], "end": [6, 2]},
+    {"start": [6, 2], "end": [6, 6]},
+    {"start": [6, 4], "end": [2, 4]},
+    {"start": [9, 2], "end": [9, 4]},
+    {"start": [15, 0], "end": [15, 15]},
+    {"start": [15, 6], "end": [13, 6]},
+    {"start": [13, 6], "end": [13, 2]},
+    {"start": [15, 15], "end": [13, 15]},
+    {"start": [13, 15], "end": [13, 8]},
+    {"start": [13, 8], "end": [11, 8]}
+]
+
+def add_segments_to_grid(grid_map, segments, map_size_m, resolution):
+    for seg in segments:
+        (x0, y0), (x1, y1) = seg['start'], seg['end']
+        gx0, gy0 = int(x0 / resolution), int(y0 / resolution)
+        gx1, gy1 = int(x1 / resolution), int(y1 / resolution)
+        rr, cc = line(gy0, gx0, gy1, gx1)
+        rr = np.clip(rr, 0, grid_map.shape[0] - 1)
+        cc = np.clip(cc, 0, grid_map.shape[1] - 1)
+        grid_map[rr, cc] = 1
+
+add_segments_to_grid(occupancy_grid, segments, map_size_m, resolution)
+
+# ========== 其余原有代码继续 ==========
+
 # 添加项目路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,7 +84,7 @@ class AutonomousRobot:
         """初始化机器人系统"""
         # 初始化核心模块
         self.slam = SLAMProcessor()
-        self.dwa = DWAPlanner(DWA_CONFIG)
+        self.dwa = DWAPlanner()
         self.viz = RoboVizSLAMViewer(title='自主导航机器人 - SLAM建图与导航')
         self.comm = BluetoothCommMock()
         self.logger = DataLogger()

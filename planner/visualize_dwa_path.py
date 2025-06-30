@@ -4,6 +4,7 @@ import sys
 import os
 from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
+from config.map import get_global_map, MAP_SIZE_M, MAP_RESOLUTION
 
 # 添加项目根目录路径，使得可以导入 planner 模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -11,31 +12,14 @@ from planner.path_planner import plan_path, smooth_path
 from planner.dwa_planner import DWAPlanner
 
 # ========== 1. 构建地图 ==========
-map_size = 50            # 地图为 50x50 的栅格地图
-map_size_m = 5.0         # 实际物理尺寸为 5.0m x 5.0m
-resolution = map_size_m / map_size  # 每个栅格表示的实际长度（米）
-
-# 初始化空地图（0 表示空地）
-grid_map = np.zeros((map_size, map_size), dtype=np.uint8)
-
+grid_map = get_global_map()
+map_size = grid_map.shape[0]
+map_size_m = MAP_SIZE_M
+resolution = MAP_RESOLUTION
 
 # ========== 2. DWA配置 ==========
-dwa_config = {
-    'max_speed': 5,        # 最大线速度 (m/s) - 降低速度
-    'min_speed': 0.0,        # 最小线速度 (m/s)
-    'max_yawrate': 5,      # 最大角速度 (rad/s) - 降低角速度
-    'max_accel': 5,         # 提高加速度
-    'max_dyawrate': 2,     # 最大角加速度 (rad/s²) - 降低角加速度
-    'v_reso': 0.02,          # 线速度分辨率 (m/s) - 提高分辨率
-    'yawrate_reso': 0.05,    # 角速度分辨率 (rad/s) - 提高分辨率
-    'dt': 0.1,               # 时间步长 (s)
-    'predict_time': 3.0,     # 预测时间 (s) - 增加预测时间
-    'to_goal_cost_gain': 1.0,    # 降低目标代价权重
-    'speed_cost_gain': 0.05,     # 速度代价权重 - 降低权重
-    'obstacle_cost_gain': 1.5,   # 障碍物代价权重 - 增加权重
-    'robot_radius': 0.02,        # 机器人半径 (m) - 减小半径
-    'map_resolution': resolution  # 地图分辨率
-}
+dwa_planner = DWAPlanner()
+config = dwa_planner.config
 
 # ========== 3. 机器人运动模型 ==========
 def motion_model(state, control, dt):
@@ -120,12 +104,12 @@ def plot_dwa_simulation(grid_map, start, goal, path, dwa_trajectory, robot_state
         x, y, theta = current_state
         
         # 绘制机器人（圆形）
-        robot_circle = patches.Circle((x, y), dwa_config['robot_radius'], 
+        robot_circle = patches.Circle((x, y), config.robot_radius, 
                                      fill=False, color='red', linewidth=2, label='Robot')
         ax.add_patch(robot_circle)
         
         # 绘制机器人朝向
-        arrow_length = dwa_config['robot_radius'] * 1.5
+        arrow_length = config.robot_radius * 1.5
         arrow_dx = arrow_length * np.cos(theta)
         arrow_dy = arrow_length * np.sin(theta)
         ax.arrow(x, y, arrow_dx, arrow_dy, head_width=0.05, head_length=0.05, 
@@ -143,7 +127,7 @@ def plot_dwa_simulation(grid_map, start, goal, path, dwa_trajectory, robot_state
     if not animation_mode:
         # 控制输入图
         if control_history:
-            times = np.arange(len(control_history)) * dwa_config['dt']
+            times = np.arange(len(control_history)) * config.dt
             velocities = [control[0] for control in control_history]
             angular_velocities = [control[1] for control in control_history]
             
@@ -167,7 +151,7 @@ def plot_dwa_simulation(grid_map, start, goal, path, dwa_trajectory, robot_state
                 dist = np.hypot(state[0] - goal['x'], state[1] - goal['y'])
                 goal_distances.append(dist)
             
-            times = np.arange(len(robot_states)) * dwa_config['dt']
+            times = np.arange(len(robot_states)) * config.dt
             ax_metrics.plot(times, goal_distances, 'g-', linewidth=2)
             ax_metrics.set_ylabel('Distance to Goal [m]')
             ax_metrics.set_xlabel('Time [s]')
@@ -222,12 +206,12 @@ def animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_hi
             x, y, theta = current_state
             
             # 绘制机器人
-            robot_circle = patches.Circle((x, y), dwa_config['robot_radius'], 
+            robot_circle = patches.Circle((x, y), config.robot_radius, 
                                          fill=False, color='red', linewidth=2)
             ax.add_patch(robot_circle)
             
             # 绘制朝向
-            arrow_length = dwa_config['robot_radius'] * 1.5
+            arrow_length = config.robot_radius * 1.5
             arrow_dx = arrow_length * np.cos(theta)
             arrow_dy = arrow_length * np.sin(theta)
             ax.arrow(x, y, arrow_dx, arrow_dy, head_width=0.05, head_length=0.05, 
@@ -242,7 +226,7 @@ def animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_hi
             # 加速度
             if frame > 0 and frame < len(control_history):
                 v_prev, _ = control_history[frame-1]
-                accel = (v - v_prev) / dwa_config['dt']
+                accel = (v - v_prev) / config.dt
             else:
                 accel = 0.0
             # 距离终点
@@ -290,7 +274,7 @@ def run_dwa_simulation(grid_map, start, goal, max_iterations=1000, goal_threshol
     - path: 全局路径
     """
     # 初始化DWA规划器
-    dwa_planner = DWAPlanner(dwa_config)
+    dwa_planner = DWAPlanner()
     
     # 获取全局路径
     path = plan_path(grid_map, start, goal, smooth_path_flag=True)
@@ -355,7 +339,7 @@ def run_dwa_simulation(grid_map, start, goal, max_iterations=1000, goal_threshol
         control_history.append([v, omega])
         
         # 更新机器人状态
-        robot_state = motion_model(robot_state, [v, omega], dwa_config['dt'])
+        robot_state = motion_model(robot_state, [v, omega], config.dt)
         robot_velocity = [v, omega]
         
         # 记录状态
@@ -382,8 +366,9 @@ def run_dwa_simulation(grid_map, start, goal, max_iterations=1000, goal_threshol
 # ========== 6. 主程序 ==========
 if __name__ == "__main__":
     # 设置起点和终点
-    start = {'x': 2.0, 'y': 0.5}
-    goal = {'x': 4.5, 'y': 4.5}
+    start = {'x': 3.0, 'y': 0.0}  # 老师给的起点
+    # 你可以根据地图结构调整终点
+    goal = {'x': 14.0, 'y': 14.0}
     
     # 检查起点是否在障碍物内
     gx = int(start['x'] / resolution)
