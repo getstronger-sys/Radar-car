@@ -2,7 +2,6 @@
 import json
 from slam import SLAMWrapper
 
-
 def test_slam():
     # 读取 JSON 文件
     json_file_path = r"d:\\Codes\\RD\\Radar-car-2\\slam\\test_data\\exploration_data(1).json"
