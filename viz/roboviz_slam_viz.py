@@ -7,13 +7,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from roboviz import MapVisualizer
 
-# 默认配置，如果config模块不可用则使用这些值
-try:
-    from config.settings import MAP_SIZE, MAP_SIZE_PIXELS, MAP_RESOLUTION
-except ImportError:
-    MAP_SIZE = 5.0  # 地图大小（米）
-    MAP_SIZE_PIXELS = 50  # 地图像素大小
-    MAP_RESOLUTION = 0.1  # 地图分辨率（米/像素）
+# 导入全局参数
+from config.settings import MAP_SIZE_M, MAP_RESOLUTION
+from config.map import MAP_SIZE
 
 import matplotlib.patches as mpatches
 
@@ -29,12 +25,12 @@ class RoboVizSLAMViewer:
         """
         self.use_mm = use_mm
         if use_mm:
-            self.map_size_pixels = int(MAP_SIZE * 1000) if map_size_pixels is None else map_size_pixels
-            self.map_size_meters = MAP_SIZE * 1000 if map_size_meters is None else map_size_meters
+            self.map_size_pixels = int(MAP_SIZE_M * 1000) if map_size_pixels is None else map_size_pixels
+            self.map_size_meters = MAP_SIZE_M * 1000 if map_size_meters is None else map_size_meters
             self.resolution = 1.0  # 1mm/像素
         else:
-            self.map_size_pixels = map_size_pixels or MAP_SIZE_PIXELS
-            self.map_size_meters = map_size_meters or MAP_SIZE
+            self.map_size_pixels = map_size_pixels or MAP_SIZE
+            self.map_size_meters = map_size_meters or MAP_SIZE_M
             self.resolution = MAP_RESOLUTION
         self.title = title
 
@@ -200,157 +196,153 @@ class RoboVizSLAMViewer:
         self.robot_patch = mpatches.Polygon(triangle, color='red', zorder=10)
         self.viz.ax.add_patch(self.robot_patch)
 
-        # 更新状态信息
+        # 更新状态文本
         if self.status_text:
             self.status_text.remove()
             self.status_text = None
         if status_info:
             status_str = f"Frame: {self.frame_count}\n"
             for key, value in status_info.items():
-                if isinstance(value, float):
-                    status_str += f"{key}: {value:.2f}\n"
-                else:
-                    status_str += f"{key}: {value}\n"
+                status_str += f"{key}: {value}\n"
             self.status_text = self.viz.ax.text(0.02, 0.98, status_str,
                                               transform=self.viz.ax.transAxes,
-                                              fontsize=8, verticalalignment='top',
-                                              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+                                              verticalalignment='top',
+                                              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+                                              fontsize=8, zorder=20)
 
-        # 设置坐标轴
-        if self.use_mm:
-            self.viz.ax.set_xlabel('X (mm)')
-            self.viz.ax.set_ylabel('Y (mm)')
-            self.viz.ax.set_xlim(0, self.map_size_pixels)
-            self.viz.ax.set_ylim(0, self.map_size_pixels)
-        else:
-            self.viz.ax.set_xlabel('X (m)')
-            self.viz.ax.set_ylabel('Y (m)')
-            self.viz.ax.set_xlim(0, self.map_size_meters)
-            self.viz.ax.set_ylim(0, self.map_size_meters)
-
-        # 添加图例
+        # 更新图例
         if not self.viz.ax.get_legend():
             self.viz.ax.legend(loc='upper right', fontsize=8)
 
-        # 刷新显示
-        self.viz._refresh()
-        
-        # 更新计数器
+        # 更新计数
         self.frame_count += 1
 
     def add_obstacle_points(self, obstacle_points):
         """
-        添加障碍物点到地图
+        添加障碍物点可视化
         
         参数：
-        - obstacle_points: [(x1, y1), (x2, y2), ...] 障碍物点列表（单位：米）
+        - obstacle_points: [(x1, y1), (x2, y2), ...] 障碍物点列表
         """
-        # 清除之前的障碍物点
         if self.obstacle_points:
             self.obstacle_points.remove()
             self.obstacle_points = None
-            
+        
         if obstacle_points and len(obstacle_points) > 0:
-            obs_x, obs_y = zip(*obstacle_points)
-            self.obstacle_points = self.viz.ax.scatter(obs_x, obs_y, c='darkred', s=5, alpha=0.5, 
-                                                      label='obstacles', zorder=3)
+            if self.use_mm:
+                obs_x = [p[0]*1000 for p in obstacle_points]
+                obs_y = [p[1]*1000 for p in obstacle_points]
+            else:
+                obs_x = [p[0] for p in obstacle_points]
+                obs_y = [p[1] for p in obstacle_points]
+            
+            self.obstacle_points = self.viz.ax.scatter(obs_x, obs_y, 
+                                                     c='black', s=20, alpha=0.8,
+                                                     label='Obstacles', zorder=1)
 
     def save_map(self, filename='roboviz_slam_map.png'):
-        """保存当前地图为图片"""
+        """
+        保存当前地图为图片
+        """
         try:
-            # 尝试访问不同的可能属性名
             if hasattr(self.viz, 'fig'):
                 self.viz.fig.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore
             elif hasattr(self.viz, 'figure'):
                 self.viz.figure.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore
-            elif hasattr(self.viz, 'ax') and hasattr(self.viz.ax, 'figure'):
+            elif hasattr(self.viz, 'ax'):
                 self.viz.ax.figure.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore
             else:
-                # 如果都找不到，尝试从matplotlib获取当前图形
                 import matplotlib.pyplot as plt
                 plt.savefig(filename, dpi=150, bbox_inches='tight')
-            print(f"✅ RoboViz SLAM地图已保存为: {filename}")
+            print(f"✅ 地图已保存: {filename}")
         except Exception as e:
             print(f"❌ 保存地图失败: {e}")
-        
+
     def close(self):
-        """关闭可视化窗口"""
+        """
+        关闭可视化窗口
+        """
         try:
-            import matplotlib.pyplot as plt
-            # 尝试访问不同的可能属性名
-            if hasattr(self.viz, 'fig'):
-                plt.close(self.viz.fig)  # type: ignore
-            elif hasattr(self.viz, 'figure'):
-                plt.close(self.viz.figure)  # type: ignore
-            elif hasattr(self.viz, 'ax') and hasattr(self.viz.ax, 'figure'):
-                plt.close(self.viz.ax.figure)  # type: ignore
+            if hasattr(self.viz, 'close'):
+                self.viz.close()
             else:
-                # 如果都找不到，关闭当前图形
-                plt.close()
+                import matplotlib.pyplot as plt
+                plt.close('all')
         except Exception as e:
-            print(f"⚠️  关闭窗口时出错: {e}")
-        
+            print(f"关闭可视化窗口时出错: {e}")
+
     def show(self):
-        """显示窗口（阻塞模式）"""
-        import matplotlib.pyplot as plt
-        plt.show(block=True)
+        """
+        显示可视化窗口
+        """
+        try:
+            if hasattr(self.viz, 'show'):
+                self.viz.show()
+            else:
+                import matplotlib.pyplot as plt
+                plt.show()
+        except Exception as e:
+            print(f"显示可视化窗口时出错: {e}")
 
     def get_frame_rate(self):
-        """获取当前帧率"""
+        """
+        获取当前帧率
+        """
         import time
         current_time = time.time()
         if self.last_update_time > 0:
             fps = 1.0 / (current_time - self.last_update_time)
-            self.last_update_time = current_time
-            return fps
         else:
-            self.last_update_time = current_time
-            return 0
+            fps = 0
+        self.last_update_time = current_time
+        return fps
+
 
 def test_roboviz_viewer():
-    """测试RoboVizSLAMViewer功能"""
-    print("🧪 测试RoboVizSLAMViewer...")
+    """
+    测试RoboViz SLAM可视化器
+    """
+    import time
     
-    try:
-        # 创建可视化器
-        viewer = RoboVizSLAMViewer(title='RoboViz SLAM Viewer Test')
-        
-        # 创建测试地图
-        map_bytes = bytearray(MAP_SIZE_PIXELS * MAP_SIZE_PIXELS)
-        for i in range(len(map_bytes)):
-            map_bytes[i] = 128  # 灰色（未知区域）
-        
-        # 添加一些测试数据
-        for i in range(20, 30):
-            for j in range(20, 30):
-                idx = i * MAP_SIZE_PIXELS + j
-                if idx < len(map_bytes):
-                    map_bytes[idx] = 0  # 黑色（障碍物）
-        
-        # 模拟机器人运动
-        trajectory = []
-        for i in range(10):
-            x = i * 0.5
-            y = i * 0.3
-            theta = i * 0.1
-            pose = (x, y, theta)
-            trajectory.append(pose)
-            
-            # 模拟激光数据
-            lidar_scan = [1000 + i * 50] * 360
-            
-            # 更新可视化
-            viewer.update(map_bytes, pose, lidar_scan, trajectory)
-            
-            print(f"   步骤 {i+1}/10: 机器人位置 ({x:.1f}, {y:.1f}, {np.degrees(theta):.1f}°)")
-        
-        print("✅ 测试完成！按任意键退出...")
-        input()
-        
-    except Exception as e:
-        print(f"❌ 测试失败: {e}")
-        import traceback
-        traceback.print_exc()
+    # 创建可视化器
+    viewer = RoboVizSLAMViewer(title='Test SLAM Viewer', use_mm=False)
+    
+    # 模拟数据
+    map_bytes = bytearray(MAP_SIZE * MAP_SIZE)
+    pose = [MAP_SIZE_M/2, MAP_SIZE_M/2, 0.0]  # 地图中心
+    
+    # 模拟激光扫描数据
+    lidar_scan = [1000 + i * 50 for i in range(360)]
+    
+    # 模拟轨迹
+    trajectory = []
+    for i in range(10):
+        x = MAP_SIZE_M/2 + i * 0.3
+        y = MAP_SIZE_M/2 + i * 0.1
+        theta = i * 0.1
+        trajectory.append([x, y])
+    
+    # 模拟前沿点
+    frontiers = [[1.0, 1.0], [2.0, 2.0], [3.0, 1.5]]
+    
+    # 模拟目标点
+    current_goal = [MAP_SIZE_M-1, MAP_SIZE_M-1]
+    
+    # 更新可视化
+    viewer.update(map_bytes, pose, lidar_scan, trajectory, None, frontiers, current_goal)
+    
+    print("✅ RoboViz SLAM可视化器测试完成")
+    print(f"地图尺寸: {MAP_SIZE}x{MAP_SIZE} 像素")
+    print(f"地图物理尺寸: {MAP_SIZE_M}x{MAP_SIZE_M} 米")
+    print(f"分辨率: {MAP_RESOLUTION} 米/像素")
+    
+    # 保存测试图片
+    viewer.save_map('test_slam_map.png')
+    
+    return viewer
+
 
 if __name__ == "__main__":
-    test_roboviz_viewer() 
+    # 运行测试
+    viewer = test_roboviz_viewer()
+    viewer.show() 

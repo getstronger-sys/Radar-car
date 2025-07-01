@@ -5,14 +5,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/config/map.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/planner/dwa_planner.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/dwa_planner.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/planner/path_planner.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/path_planner.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/planner/visualize_dwa_path.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/visualize_dwa_path.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/planner/visualize_path.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/visualize_path.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/planner/web_viz.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/web_viz.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/viz/roboviz_slam_viz.py" beforeDir="false" afterPath="$PROJECT_DIR$/viz/roboviz_slam_viz.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -40,48 +40,52 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Python 测试.Python 测试 (enhanced_test.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (simple_test.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (simple_viz_test.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (test_frontier_detect.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (test_slam_exception.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (test_system.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (test_system_unittest.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python 测试.Python 测试 (test_visualization.py 内).executor&quot;: &quot;Run&quot;,
-    &quot;Python.data_logger.executor&quot;: &quot;Run&quot;,
-    &quot;Python.demo_complete_system.executor&quot;: &quot;Run&quot;,
-    &quot;Python.dwa_planner.executor&quot;: &quot;Run&quot;,
-    &quot;Python.dynamic_window_approach.executor&quot;: &quot;Run&quot;,
-    &quot;Python.frontier_detect.executor&quot;: &quot;Run&quot;,
-    &quot;Python.hybrid_a_star_planner.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;Python.map_viz.executor&quot;: &quot;Run&quot;,
-    &quot;Python.mapper.executor&quot;: &quot;Run&quot;,
-    &quot;Python.matplotlib_viz.executor&quot;: &quot;Run&quot;,
-    &quot;Python.move_to_pose.executor&quot;: &quot;Run&quot;,
-    &quot;Python.move_to_pose_robot.executor&quot;: &quot;Run&quot;,
-    &quot;Python.path_planner.executor&quot;: &quot;Run&quot;,
-    &quot;Python.plot.executor&quot;: &quot;Run&quot;,
-    &quot;Python.roboviz_slam_demo.executor&quot;: &quot;Run&quot;,
-    &quot;Python.roboviz_slam_viz.executor&quot;: &quot;Run&quot;,
-    &quot;Python.simple_animation_demo.executor&quot;: &quot;Run&quot;,
-    &quot;Python.simple_exploration_demo.executor&quot;: &quot;Run&quot;,
-    &quot;Python.simple_test.executor&quot;: &quot;Run&quot;,
-    &quot;Python.slam_demo.executor&quot;: &quot;Run&quot;,
-    &quot;Python.visualize_dwa_path.executor&quot;: &quot;Run&quot;,
-    &quot;Python.visualize_path.executor&quot;: &quot;Run&quot;,
-    &quot;Python.web_viz.executor&quot;: &quot;Run&quot;,
-    &quot;Python.测试.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;vcs.Git&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python 测试.Python 测试 (enhanced_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor": "Run",
+    "Python 测试.Python 测试 (simple_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (simple_viz_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_frontier_detect.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_slam_exception.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_system.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_system_unittest.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_visualization.py 内).executor": "Run",
+    "Python 测试.Python 测试 (visualize_path.py 内).executor": "Run",
+    "Python.data_logger.executor": "Run",
+    "Python.demo_complete_system.executor": "Run",
+    "Python.dwa_planner.executor": "Run",
+    "Python.dynamic_window_approach.executor": "Run",
+    "Python.frontier_detect.executor": "Run",
+    "Python.hybrid_a_star_planner.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.main_pipeline.executor": "Run",
+    "Python.map_viz.executor": "Run",
+    "Python.mapper.executor": "Run",
+    "Python.matplotlib_viz.executor": "Run",
+    "Python.move_to_pose.executor": "Run",
+    "Python.move_to_pose_robot.executor": "Run",
+    "Python.path_planner.executor": "Run",
+    "Python.plot.executor": "Run",
+    "Python.postprocess_path.executor": "Run",
+    "Python.roboviz_slam_demo.executor": "Run",
+    "Python.roboviz_slam_viz.executor": "Run",
+    "Python.settings.executor": "Run",
+    "Python.simple_animation_demo.executor": "Run",
+    "Python.simple_exploration_demo.executor": "Run",
+    "Python.simple_test.executor": "Run",
+    "Python.slam_demo.executor": "Run",
+    "Python.visualize_dwa_path.executor": "Run",
+    "Python.visualize_path.executor": "Run",
+    "Python.web_viz.executor": "Run",
+    "Python.测试.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "settings.editor.selected.configurable": "vcs.Git"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

@@ -4,396 +4,253 @@ import sys
 import os
 from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
-from config.map import get_global_map, MAP_SIZE_M, MAP_RESOLUTION
+from scipy.ndimage import binary_dilation
+import matplotlib
+matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+matplotlib.rcParams['axes.unicode_minus'] = False   # 解决负号显示问题
 
-# 添加项目根目录路径，使得可以导入 planner 模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from planner.path_planner import plan_path, smooth_path
-from planner.dwa_planner import DWAPlanner
+from config.map import get_global_map, MAP_SIZE_M, MAP_RESOLUTION
+from config.settings import START_POSITION, EXIT_POSITION
+from planner.path_planner import plan_path_simple, smooth_path_with_obstacle_avoidance
+from PythonRobotics.PathPlanning.DynamicWindowApproach.dynamic_window_approach import (
+    dwa_control, Config as DWAConfig, motion as dwa_motion
+)
 
-# ========== 1. 构建地图 ==========
-grid_map = get_global_map()
-map_size = grid_map.shape[0]
-map_size_m = MAP_SIZE_M
-resolution = MAP_RESOLUTION
+def align_to_grid_center(pos, resolution):
+    return {
+        'x': (int(pos['x'] / resolution) + 0.5) * resolution,
+        'y': (int(pos['y'] / resolution) + 0.5) * resolution
+    }
 
-# ========== 2. DWA配置 ==========
-dwa_planner = DWAPlanner()
-config = dwa_planner.config
+def is_path_blocked(robot_state, target, grid_map, resolution):
+    # 判断机器人到目标点的直线路径上是否有障碍物
+    x0, y0 = int(robot_state[0] / resolution), int(robot_state[1] / resolution)
+    x1, y1 = int(target[0] / resolution), int(target[1] / resolution)
+    points = bresenham(x0, y0, x1, y1)
+    for x, y in points:
+        if grid_map[y, x] == 1:
+            return True
+    return False
 
-# ========== 3. 机器人运动模型 ==========
-def motion_model(state, control, dt):
-    """
-    机器人运动模型
-    
-    参数:
-    - state: [x, y, theta] 当前状态
-    - control: [v, omega] 控制输入
-    - dt: 时间步长
-    
-    返回:
-    - new_state: [x, y, theta] 新状态
-    """
-    x, y, theta = state
-    v, omega = control
-    
-    # 简单的差分驱动模型
-    x_new = x + v * np.cos(theta) * dt
-    y_new = y + v * np.sin(theta) * dt
-    theta_new = theta + omega * dt
-    
-    # 角度归一化到 [-π, π]
-    theta_new = np.arctan2(np.sin(theta_new), np.cos(theta_new))
-    
-    return [x_new, y_new, theta_new]
-
-# ========== 4. 可视化函数 ==========
-def plot_dwa_simulation(grid_map, start, goal, path, dwa_trajectory, robot_states, 
-                       control_history, animation_mode=False):
-    """
-    可视化DWA仿真结果
-    
-    参数:
-    - grid_map: 栅格地图
-    - start: 起始位置
-    - goal: 目标位置
-    - path: 全局路径
-    - dwa_trajectory: DWA轨迹历史
-    - robot_states: 机器人状态历史
-    - control_history: 控制输入历史
-    - animation_mode: 是否为动画模式
-    """
-    if animation_mode:
-        fig, ax = plt.subplots(figsize=(10, 8))
+def bresenham(x0, y0, x1, y1):
+    # Bresenham整数直线算法
+    points = []
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    x, y = x0, y0
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    if dx > dy:
+        err = dx / 2.0
+        while x != x1:
+            points.append((x, y))
+            err -= dy
+            if err < 0:
+                y += sy
+                err += dx
+            x += sx
     else:
-        fig, ax = plt.subplots(figsize=(12, 10))
-        # 创建子图布局
-        gs = fig.add_gridspec(2, 2, height_ratios=[3, 1], width_ratios=[3, 1])
-        ax = fig.add_subplot(gs[0, 0])  # 主轨迹图
-        ax_control = fig.add_subplot(gs[1, 0])  # 控制输入图
-        ax_metrics = fig.add_subplot(gs[0, 1])  # 指标图
+        err = dy / 2.0
+        while y != y1:
+            points.append((x, y))
+            err -= dx
+            if err < 0:
+                x += sx
+                err += dy
+            y += sy
+    points.append((x1, y1))
+    return points
 
-    # 显示背景地图
-    ax.imshow(grid_map, cmap='Greys', origin='lower',
-              extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
+def simple_goto_control(robot_state, target, max_v=0.6, w_gain=2.5):
+    dx = target[0] - robot_state[0]
+    dy = target[1] - robot_state[1]
+    dist = np.hypot(dx, dy)
+    v = min(max_v, dist)  # 距离越近速度越小
+    target_theta = np.arctan2(dy, dx)
+    yaw = robot_state[2]
+    angle_diff = np.arctan2(np.sin(target_theta - yaw), np.cos(target_theta - yaw))
+    w = w_gain * angle_diff
+    return np.array([v, w])
 
-    # 绘制障碍物点
-    obs_y, obs_x = np.where(grid_map == 1)
-    ax.scatter(obs_x * resolution + resolution / 2,
-               obs_y * resolution + resolution / 2,
-               c='k', s=10, label='Obstacles', alpha=0.7)
-
-    # 起点和终点
-    ax.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
-    ax.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*', label='Goal')
-
-    # 全局路径
-    if path:
-        px, py = zip(*path)
-        ax.plot(px, py, 'b-', linewidth=2, label='Global Path', alpha=0.7)
-
-    # DWA轨迹
-    if dwa_trajectory:
-        traj_x = [state[0] for state in dwa_trajectory]
-        traj_y = [state[1] for state in dwa_trajectory]
-        ax.plot(traj_x, traj_y, 'm-', linewidth=3, label='DWA Trajectory')
-
-    # 机器人当前位置（最后一个状态）
-    if robot_states:
-        current_state = robot_states[-1]
-        x, y, theta = current_state
-        
-        # 绘制机器人（圆形）
-        robot_circle = patches.Circle((x, y), config.robot_radius, 
-                                     fill=False, color='red', linewidth=2, label='Robot')
-        ax.add_patch(robot_circle)
-        
-        # 绘制机器人朝向
-        arrow_length = config.robot_radius * 1.5
-        arrow_dx = arrow_length * np.cos(theta)
-        arrow_dy = arrow_length * np.sin(theta)
-        ax.arrow(x, y, arrow_dx, arrow_dy, head_width=0.05, head_length=0.05, 
-                fc='red', ec='red')
-
-    # 设置图像范围与标签
-    ax.set_xlim(0, map_size_m)
-    ax.set_ylim(0, map_size_m)
-    ax.set_xlabel('X [m]')
-    ax.set_ylabel('Y [m]')
-    ax.set_title('DWA Path Planning with Dynamics')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    if not animation_mode:
-        # 控制输入图
-        if control_history:
-            times = np.arange(len(control_history)) * config.dt
-            velocities = [control[0] for control in control_history]
-            angular_velocities = [control[1] for control in control_history]
-            
-            ax_control.plot(times, velocities, 'b-', label='Linear Velocity', linewidth=2)
-            ax_control.set_ylabel('Velocity [m/s]')
-            ax_control.set_xlabel('Time [s]')
-            ax_control.legend()
-            ax_control.grid(True, alpha=0.3)
-            
-            # 角速度（双轴）
-            ax_control_twin = ax_control.twinx()
-            ax_control_twin.plot(times, angular_velocities, 'r-', label='Angular Velocity', linewidth=2)
-            ax_control_twin.set_ylabel('Angular Velocity [rad/s]', color='r')
-            ax_control_twin.tick_params(axis='y', labelcolor='r')
-
-        # 指标图
-        if robot_states and path:
-            # 计算到目标的距离
-            goal_distances = []
-            for state in robot_states:
-                dist = np.hypot(state[0] - goal['x'], state[1] - goal['y'])
-                goal_distances.append(dist)
-            
-            times = np.arange(len(robot_states)) * config.dt
-            ax_metrics.plot(times, goal_distances, 'g-', linewidth=2)
-            ax_metrics.set_ylabel('Distance to Goal [m]')
-            ax_metrics.set_xlabel('Time [s]')
-            ax_metrics.set_title('Performance Metrics')
-            ax_metrics.grid(True, alpha=0.3)
-            
-            # 添加最终距离信息
-            final_distance = goal_distances[-1] if goal_distances else 0
-            ax_metrics.text(0.05, 0.95, f'Final Distance: {final_distance:.3f}m', 
-                           transform=ax_metrics.transAxes, verticalalignment='top',
-                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
-
-    plt.tight_layout()
-    plt.show()
-
-def animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_history):
-    """
-    创建DWA仿真的动画，并实时显示位置、速度、加速度、距离终点
-    """
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    def animate(frame):
-        ax.clear()
-        
-        # 显示背景地图
-        ax.imshow(grid_map, cmap='Greys', origin='lower',
-                  extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
-        
-        # 绘制障碍物
-        obs_y, obs_x = np.where(grid_map == 1)
-        ax.scatter(obs_x * resolution + resolution / 2,
-                   obs_y * resolution + resolution / 2,
-                   c='k', s=10, alpha=0.7)
-        
-        # 起点和终点
-        ax.scatter([start['x']], [start['y']], c='g', s=100, marker='o')
-        ax.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*')
-        
-        # 全局路径
-        if path:
-            px, py = zip(*path)
-            ax.plot(px, py, 'b-', linewidth=2, alpha=0.7)
-        
-        # 机器人轨迹（到当前帧）
-        if frame < len(robot_states):
-            traj_x = [state[0] for state in robot_states[:frame+1]]
-            traj_y = [state[1] for state in robot_states[:frame+1]]
-            ax.plot(traj_x, traj_y, 'm-', linewidth=3)
-            
-            # 当前机器人位置
-            current_state = robot_states[frame]
-            x, y, theta = current_state
-            
-            # 绘制机器人
-            robot_circle = patches.Circle((x, y), config.robot_radius, 
-                                         fill=False, color='red', linewidth=2)
-            ax.add_patch(robot_circle)
-            
-            # 绘制朝向
-            arrow_length = config.robot_radius * 1.5
-            arrow_dx = arrow_length * np.cos(theta)
-            arrow_dy = arrow_length * np.sin(theta)
-            ax.arrow(x, y, arrow_dx, arrow_dy, head_width=0.05, head_length=0.05, 
-                    fc='red', ec='red')
-            
-            # ==== 实时数据显示 ====
-            # 速度
-            if frame < len(control_history):
-                v, omega = control_history[frame]
-            else:
-                v, omega = 0.0, 0.0
-            # 加速度
-            if frame > 0 and frame < len(control_history):
-                v_prev, _ = control_history[frame-1]
-                accel = (v - v_prev) / config.dt
-            else:
-                accel = 0.0
-            # 距离终点
-            dist_to_goal = np.hypot(x - goal['x'], y - goal['y'])
-            # 文本显示
-            info = (
-                f"Step: {frame}\n"
-                f"Pos: ({x:.2f}, {y:.2f})\n"
-                f"Vel: {v:.2f} m/s\n"
-                f"Accel: {accel:.2f} m/s²\n"
-                f"Dist to Goal: {dist_to_goal:.2f} m"
-            )
-            ax.text(0.02, 0.98, info, transform=ax.transAxes, fontsize=12,
-                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
-        
-        ax.set_xlim(0, map_size_m)
-        ax.set_ylim(0, map_size_m)
-        ax.set_xlabel('X [m]')
-        ax.set_ylabel('Y [m]')
-        ax.set_title(f'DWA Simulation - Frame {frame}')
-        ax.grid(True, alpha=0.3)
-        
-        return ax.get_children()
-    
-    anim = FuncAnimation(fig, animate, frames=len(robot_states), 
-                        interval=100, repeat=True, blit=False)
-    plt.show()
-    return anim
-
-# ========== 5. DWA仿真主函数 ==========
-def run_dwa_simulation(grid_map, start, goal, max_iterations=1000, goal_threshold=0.15):
-    """
-    运行DWA仿真
-    
-    参数:
-    - grid_map: 栅格地图
-    - start: 起始位置 {'x': float, 'y': float}
-    - goal: 目标位置 {'x': float, 'y': float}
-    - max_iterations: 最大迭代次数
-    - goal_threshold: 到达目标的阈值
-    
-    返回:
-    - robot_states: 机器人状态历史
-    - control_history: 控制输入历史
-    - path: 全局路径
-    """
-    # 初始化DWA规划器
-    dwa_planner = DWAPlanner()
-    
-    # 获取全局路径
-    path = plan_path(grid_map, start, goal, smooth_path_flag=True)
-    if not path:
+def run_astar_follow_with_dwa(grid_map, start, goal, max_iterations=1200, goal_threshold=0.18):
+    raw_path = plan_path_simple(grid_map, start, goal, MAP_RESOLUTION)
+    if not raw_path:
         print("⚠️  无法找到全局路径")
         return [], [], []
-    
-    # 初始化机器人状态 - 设置初始朝向指向目标
-    initial_theta = np.arctan2(goal['y'] - start['y'], goal['x'] - start['x'])
-    robot_state = [start['x'], start['y'], initial_theta]  # [x, y, theta]
-    robot_velocity = [0.0, 0.0]  # [v, omega]
-    
-    # 记录历史
+    path = smooth_path_with_obstacle_avoidance(raw_path, grid_map, MAP_RESOLUTION)
+    if not path or len(path) < 2:
+        path = raw_path
+    obs_y, obs_x = np.where(grid_map == 1)
+    ob = np.vstack([
+        obs_x * MAP_RESOLUTION + MAP_RESOLUTION / 2,
+        obs_y * MAP_RESOLUTION + MAP_RESOLUTION / 2
+    ]).T if len(obs_x) > 0 else np.zeros((0, 2))
+    if len(path) > 2:
+        dx = path[2][0] - path[0][0]
+        dy = path[2][1] - path[0][1]
+        initial_theta = np.arctan2(dy, dx)
+    else:
+        initial_theta = 0.0
+    robot_state = np.array([start['x'], start['y'], initial_theta, 0.1, 0.0])
     robot_states = [robot_state.copy()]
     control_history = []
-    
-    print(f"🚀 开始DWA仿真")
-    print(f"   起点: ({start['x']:.2f}, {start['y']:.2f})")
-    print(f"   终点: ({goal['x']:.2f}, {goal['y']:.2f})")
-    print(f"   初始朝向: {initial_theta:.3f} rad")
-    print(f"   全局路径点数: {len(path)}")
-    print(f"   目标阈值: {goal_threshold:.3f}m")
-    
-    # 记录最佳距离
-    best_distance = float('inf')
-    stuck_counter = 0
-    last_position = robot_state[:2]
-    
-    # 仿真循环
+    config = DWAConfig()
+    config.robot_radius = 0.05
+    config.max_speed = 1.5
+    config.min_speed = 0.0
+    config.max_accel = 0.8
+    config.max_yaw_rate = 2.5
+    config.v_resolution = 0.08
+    config.yaw_rate_resolution = 2.0 * np.pi / 180.0
+    config.dt = 0.1
+    config.predict_time = 2.0
+    config.to_goal_cost_gain = 14.0
+    config.speed_cost_gain = 0.2
+    config.obstacle_cost_gain = 0.18
+    path_idx = 0
     for iteration in range(max_iterations):
-        # 计算到目标的距离
-        distance_to_goal = np.hypot(robot_state[0] - goal['x'], robot_state[1] - goal['y'])
-        
-        # 更新最佳距离
-        if distance_to_goal < best_distance:
-            best_distance = distance_to_goal
-        
-        # 检查是否到达目标
-        if distance_to_goal < goal_threshold:
+        if path_idx >= len(path):
+            break
+        target = path[path_idx]
+        dist_to_target = np.hypot(robot_state[0] - target[0], robot_state[1] - target[1])
+        dist_to_goal = np.hypot(robot_state[0] - goal['x'], robot_state[1] - goal['y'])
+        if dist_to_goal < goal_threshold:
             print(f"✅ 到达目标! 迭代次数: {iteration}")
             break
-        
-        # 检查是否卡住（位置没有变化）
-        current_position = robot_state[:2]
-        position_change = np.hypot(current_position[0] - last_position[0], 
-                                  current_position[1] - last_position[1])
-        
-        if position_change < 0.01:  # 如果位置变化很小
-            stuck_counter += 1
-            if stuck_counter > 50:  # 如果连续50次迭代都卡住
-                print(f"⚠️  机器人可能卡住，停止仿真")
-                break
+        # 检查路径点是否被障碍物阻挡
+        blocked = is_path_blocked(robot_state, target, grid_map, MAP_RESOLUTION)
+        if blocked:
+            # 启动DWA局部避障
+            u, _ = dwa_control(robot_state, config, [target[0], target[1]], ob)
         else:
-            stuck_counter = 0
-            last_position = current_position
-        
-        # DWA规划
-        goal_array = [goal['x'], goal['y']]
-        v, omega = dwa_planner.plan(robot_state, robot_velocity, goal_array, grid_map)
-        
-        # 记录控制输入
-        control_history.append([v, omega])
-        
-        # 更新机器人状态
-        robot_state = motion_model(robot_state, [v, omega], config.dt)
-        robot_velocity = [v, omega]
-        
-        # 记录状态
+            # 直接朝路径点运动
+            u = simple_goto_control(robot_state, target)
+        robot_state = dwa_motion(robot_state, u, config.dt)
         robot_states.append(robot_state.copy())
-        
-        # 检查是否超出地图边界
-        if (robot_state[0] < 0 or robot_state[0] > map_size_m or 
-            robot_state[1] < 0 or robot_state[1] > map_size_m):
-            print(f"⚠️  机器人超出地图边界，停止仿真")
-            break
-        
-        # 每50次迭代打印一次进度
-        if iteration % 50 == 0:
-            print(f"   迭代 {iteration}: 距离目标 {distance_to_goal:.3f}m, 控制 [{v:.3f}, {omega:.3f}]")
-    
-    print(f"📊 仿真完成")
-    print(f"   总迭代次数: {len(robot_states)}")
-    print(f"   最终距离: {distance_to_goal:.3f}m")
-    print(f"   最佳距离: {best_distance:.3f}m")
-    print(f"   是否到达目标: {'是' if distance_to_goal < goal_threshold else '否'}")
-    
+        control_history.append([u[0], u[1]])
+        if dist_to_target < 0.3 and path_idx < len(path) - 1:
+            path_idx += 1
     return robot_states, control_history, path
 
-# ========== 6. 主程序 ==========
+# 其余可视化和主程序部分保持不变
 if __name__ == "__main__":
-    # 设置起点和终点
-    start = {'x': 3.0, 'y': 0.0}  # 老师给的起点
-    # 你可以根据地图结构调整终点
-    goal = {'x': 14.0, 'y': 14.0}
-    
-    # 检查起点是否在障碍物内
-    gx = int(start['x'] / resolution)
-    gy = int(start['y'] / resolution)
-    print("起点格子坐标:", gx, gy, "值:", grid_map[gy, gx])
-    
-    # 运行DWA仿真
-    robot_states, control_history, path = run_dwa_simulation(grid_map, start, goal)
-    
+    grid_map = get_global_map()
+    grid_map_orig = grid_map.copy()  # 保存原始障碍物地图
+    map_size_m = MAP_SIZE_M
+    resolution = MAP_RESOLUTION
+    start = align_to_grid_center(START_POSITION, resolution)
+    goal = align_to_grid_center(EXIT_POSITION, resolution)
+    # 机器人半径
+    robot_radius = 0.05  # 与DWA config一致
+    # 计算膨胀核尺寸
+    dilation_radius = int(np.ceil(robot_radius / resolution))
+    if dilation_radius > 0:
+        structure = np.ones((2 * dilation_radius + 1, 2 * dilation_radius + 1), dtype=bool)
+        dilated_grid_map = binary_dilation(grid_map == 1, structure=structure).astype(np.uint8)
+    else:
+        dilated_grid_map = grid_map.copy()
+    def is_free(pos, grid_map, resolution):
+        gx = int(pos['x'] / resolution)
+        gy = int(pos['y'] / resolution)
+        return grid_map[gy, gx] == 0
+    if not is_free(start, dilated_grid_map, resolution):
+        raise ValueError("起点在障碍物内，请选择空地作为起点！")
+    if not is_free(goal, dilated_grid_map, resolution):
+        raise ValueError("终点在障碍物内，请选择空地作为终点！")
+    robot_states, control_history, path = run_astar_follow_with_dwa(dilated_grid_map, start, goal)
     if robot_states:
-        # 静态可视化
-        plot_dwa_simulation(grid_map, start, goal, path, robot_states, 
-                           robot_states, control_history, animation_mode=False)
-        
-        # 动画可视化（可选）
-        animate_dwa_simulation(grid_map, start, goal, path, robot_states, control_history)
+        from matplotlib import pyplot as plt
+        def plot_astar_dwa(grid_map, grid_map_orig, start, goal, path, robot_states):
+            fig, ax = plt.subplots(figsize=(12, 10))
+            ax.imshow(grid_map, cmap='Greys', origin='lower', extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
+            # 原始障碍物
+            obs_y, obs_x = np.where((grid_map == 1) & (grid_map_orig == 1))
+            ax.scatter(obs_x * resolution + resolution / 2, obs_y * resolution + resolution / 2, c='k', s=10, label='Obstacles', alpha=0.7)
+            # 膨胀障碍物
+            dil_y, dil_x = np.where((grid_map == 1) & (grid_map_orig == 0))
+            ax.scatter(dil_x * resolution + resolution / 2, dil_y * resolution + resolution / 2, c='#39FF14', s=10, label='Inflated Obstacles', alpha=0.7)
+            ax.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
+            ax.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*', label='Goal')
+            if path:
+                px, py = zip(*path)
+                ax.plot(px, py, 'b-', linewidth=2, label='Global Path', alpha=0.7)
+            if robot_states:
+                traj_x = [state[0] for state in robot_states]
+                traj_y = [state[1] for state in robot_states]
+                ax.plot(traj_x, traj_y, 'm-', linewidth=3, label='Trajectory')
+            ax.set_xlim(0, map_size_m)
+            ax.set_ylim(0, map_size_m)
+            ax.set_xlabel('X [m]')
+            ax.set_ylabel('Y [m]')
+            ax.set_title('A* Path Following + DWA Local Obstacle Avoidance')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.show()
+        plot_astar_dwa(dilated_grid_map, grid_map_orig, start, goal, path, robot_states)
+        def animate_astar_dwa(grid_map, grid_map_orig, start, goal, path, robot_states, control_history):
+            fig, ax = plt.subplots(figsize=(10, 8))
+            def animate(frame):
+                ax.clear()
+                ax.imshow(grid_map, cmap='Greys', origin='lower', extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
+                # 原始障碍物
+                obs_y, obs_x = np.where((grid_map == 1) & (grid_map_orig == 1))
+                ax.scatter(obs_x * resolution + resolution / 2, obs_y * resolution + resolution / 2, c='k', s=10, alpha=0.7)
+                # 膨胀障碍物
+                dil_y, dil_x = np.where((grid_map == 1) & (grid_map_orig == 0))
+                ax.scatter(dil_x * resolution + resolution / 2, dil_y * resolution + resolution / 2, c='#39FF14', s=10, alpha=0.7)
+                ax.scatter([start['x']], [start['y']], c='g', s=100, marker='o')
+                ax.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*')
+                if path:
+                    px, py = zip(*path)
+                    ax.plot(px, py, 'b-', linewidth=2, alpha=0.7)
+                if frame < len(robot_states):
+                    traj_x = [state[0] for state in robot_states[:frame+1]]
+                    traj_y = [state[1] for state in robot_states[:frame+1]]
+                    ax.plot(traj_x, traj_y, 'm-', linewidth=3)
+                    current_state = robot_states[frame]
+                    x, y, theta = current_state[:3]
+                    robot_circle = patches.Circle((x, y), 0.4, fill=False, color='red', linewidth=2)
+                    ax.add_patch(robot_circle)
+                    arrow_length = 0.6
+                    arrow_dx = arrow_length * np.cos(theta)
+                    arrow_dy = arrow_length * np.sin(theta)
+                    ax.arrow(x, y, arrow_dx, arrow_dy, head_width=0.05, head_length=0.05, fc='red', ec='red')
+                    # 速度
+                    if frame < len(control_history):
+                        v, omega = control_history[frame]
+                    else:
+                        v, omega = 0.0, 0.0
+                    # 加速度
+                    if frame > 0 and frame < len(control_history):
+                        v_prev, _ = control_history[frame-1]
+                        accel = (v - v_prev) / 0.1
+                    else:
+                        accel = 0.0
+                    # 距离终点
+                    dist_to_goal = np.hypot(x - goal['x'], y - goal['y'])
+                    info = (
+                        f"Step: {frame}\n"
+                        f"Pos: ({x:.2f}, {y:.2f})\n"
+                        f"Vel: {v:.2f} m/s\n"
+                        f"Accel: {accel:.2f} $m/s^2$\n"
+                        f"Dist to Goal: {dist_to_goal:.2f} m"
+                    )
+                    ax.text(0.02, 0.98, info, transform=ax.transAxes, fontsize=12,
+                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
+                ax.set_xlim(0, map_size_m)
+                ax.set_ylim(0, map_size_m)
+                ax.set_xlabel('X [m]')
+                ax.set_ylabel('Y [m]')
+                ax.set_title(f'A*+DWA animation - Frame {frame}')
+                ax.grid(True, alpha=0.3)
+                return ax.get_children()
+            anim = FuncAnimation(fig, animate, frames=len(robot_states), interval=100, repeat=True, blit=False)
+            plt.show()
+            return anim
+        animate_astar_dwa(dilated_grid_map, grid_map_orig, start, goal, path, robot_states, control_history)
     else:
         print("❌ 仿真失败，无法可视化")
 
-def is_free(pos, grid_map, resolution):
-    gx = int(pos['x'] / resolution)
-    gy = int(pos['y'] / resolution)
-    return grid_map[gy, gx] == 0
-
-if not is_free(start, grid_map, resolution):
-    raise ValueError("起点在障碍物内，请选择空地作为起点！")
-if not is_free(goal, grid_map, resolution):
-    raise ValueError("终点在障碍物内，请选择空地作为终点！") 
+        

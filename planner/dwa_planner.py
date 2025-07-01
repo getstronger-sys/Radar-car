@@ -1,6 +1,8 @@
 import numpy as np
 import sys
 import os
+from config.settings import MAP_RESOLUTION
+from scipy.ndimage import binary_dilation
 
 # 添加PythonRobotics库路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -31,28 +33,34 @@ except Exception as e:
 
 
 class DWAPlanner:
-    def __init__(self):
+    def __init__(self, config_override=None):
         if not PYTHONROBOTICS_AVAILABLE:
             raise ImportError("PythonRobotics DWA算法不可用")
         self.config = Config()
         self.config.robot_type = RobotType.circle  # 默认圆形机器人
+        
+        # 支持外部参数覆盖
+        if config_override:
+            for k, v in config_override.items():
+                setattr(self.config, k, v)
 
-    def grid_to_obstacles(self, occupancy_grid):
+    def grid_to_obstacles(self, occupancy_grid, dilation_iter=2):
         """
-        将栅格地图转换为障碍物点列表
+        将栅格地图转换为障碍物点列表，并对障碍物做膨胀
 
         参数:
         - occupancy_grid: 2D numpy数组，0为自由，1为障碍
+        - dilation_iter: 膨胀迭代次数，越大障碍物越粗
 
         返回:
         - obstacles: numpy数组，形状为(n, 2)，每行为(x, y)坐标
         """
         h, w = occupancy_grid.shape
-        map_size_m = 5.0  # 地图实际大小（米）
-        resolution = map_size_m / max(h, w)
+        resolution = MAP_RESOLUTION  # 使用全局分辨率
 
-        # 提取障碍物坐标
-        obstacle_indices = np.where(occupancy_grid == 1)
+        # 膨胀障碍物
+        dilated = binary_dilation(occupancy_grid == 1, iterations=dilation_iter)
+        obstacle_indices = np.where(dilated)
         if len(obstacle_indices[0]) == 0:
             return np.array([]).reshape(0, 2)
 
@@ -64,7 +72,7 @@ class DWAPlanner:
         obstacles = np.column_stack((ox, oy))
         return obstacles
 
-    def plan(self, current_state, current_velocity, goal, occupancy_grid):
+    def plan(self, current_state, current_velocity, goal, occupancy_grid, dilation_iter=2):
         """
         DWA路径规划主函数
 
@@ -73,6 +81,7 @@ class DWAPlanner:
         - current_velocity: [v, omega] 当前速度
         - goal: [x, y] 目标位置
         - occupancy_grid: 占用栅格地图
+        - dilation_iter: 膨胀迭代次数，越大障碍物越粗
 
         返回:
         - v: 线速度
@@ -80,8 +89,11 @@ class DWAPlanner:
         """
         x = current_state + current_velocity  # [x, y, yaw, v, omega]
         goal_array = np.array(goal)
-        obstacles = self.grid_to_obstacles(occupancy_grid)
+        obstacles = self.grid_to_obstacles(occupancy_grid, dilation_iter=dilation_iter)
+        
+        # 如果没有障碍物，创建一个虚拟障碍物避免算法错误
         if len(obstacles) == 0:
             obstacles = np.array([[current_state[0] + 10, current_state[1] + 10]])
+        
         u, _ = dwa_control(x, self.config, goal_array, obstacles)
         return u[0], u[1]

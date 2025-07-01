@@ -7,7 +7,7 @@ MAP_SIZE = int(MAP_SIZE_M / MAP_RESOLUTION)  # 地图格子数
 
 # 起始点与出口点坐标（单位：米）
 START_POSITION = {'x': 3.0, 'y': 0.0, 'theta': 0.0}
-# EXIT_POSITION = {'x': 14.0, 'y': 14.0, 'theta': 0.0}  # 可以在探索中动态识别
+EXIT_POSITION = {'x': 12.0, 'y': 14.0, 'theta': 0.0}  # 全局设置终点(12,14.5) - 避免边界问题
 
 # 机器人参数
 """
@@ -32,18 +32,18 @@ BLUETOOTH_PORT = 'COM4'
 BLUETOOTH_BAUDRATE = 115200
 
 DWA_CONFIG = {
-    'robot_radius': ROBOT_RADIUS,     # 机器人半径，单位：米。用于计算安全距离，障碍物膨胀时参考此值。
-    'map_resolution': MAP_RESOLUTION, # 地图分辨率，单位：米/格子。每个栅格代表的实际尺寸，影响路径规划精度。
-    'max_speed': 1.0,                 # 最大线速度，单位：米/秒。机器人允许达到的最高前进速度。
-    'min_speed': 0.0,                 # 最小线速度，单位：米/秒。通常为0，表示机器人可以停止。
-    'max_yawrate': 1.0,               # 最大角速度，单位：弧度/秒。机器人旋转速度的上限。
-    'max_accel': 0.5,                 # 最大线加速度，单位：米/秒²。速度变化的最大速率，限制加减速幅度。
-    'max_dyawrate': 1.0,              # 最大角加速度，单位：弧度/秒²。角速度变化的最大速率，限制旋转加减速。
-    'dt': 0.1,                       # 时间步长，单位：秒。控制周期和轨迹预测的时间间隔。
-    'predict_time': 2.0,             # 轨迹预测总时间，单位：秒。DWA算法在规划时会预测未来2秒的轨迹。
-    'v_reso': 0.05,                  # 线速度采样分辨率，单位：米/秒。速度采样的步进大小，影响采样精细度。
-    'yawrate_reso': 0.1,             # 角速度采样分辨率，单位：弧度/秒。角速度采样的步进大小。
-    'to_goal_cost_gain': 1.0,        # 距离目标点代价的权重系数。数值越大，算法越倾向于朝目标方向移动。
-    'speed_cost_gain': 1.0,          # 速度代价权重，鼓励机器人尽量以更高速度运动。
-    'obstacle_cost_gain': 1.0,       # 障碍物代价权重，影响避障的重要性。数值越大，机器人越远离障碍物。
+    'robot_radius': ROBOT_RADIUS,
+    'map_resolution': MAP_RESOLUTION,
+    'max_speed': 1.2,                # 提高最大速度，让轨迹评估更积极
+    'min_speed': 0.0,
+    'max_yawrate': 2.0,              # ✅ 提高转弯速度上限，更容易脱困
+    'max_accel': 0.6,
+    'max_dyawrate': 2.0,             # ✅ 同上，提升角加速度上限
+    'dt': 0.1,
+    'predict_time': 2.0,
+    'v_reso': 0.08,                  # 稍微变粗，不影响效果
+    'yawrate_reso': 0.035,          # ✅ 角速度步进调小：~2°，增加轨迹尝试多样性
+    'to_goal_cost_gain': 12.0,      # ✅ 增大朝目标吸引力
+    'speed_cost_gain': 0.5,         # ⚖️ 保持中等速度权重，不鼓励龟速
+    'obstacle_cost_gain': 0.3,      # ✅ 降低避障畏惧感，使机器人敢于接近狭道
 }
