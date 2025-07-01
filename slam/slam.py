@@ -4,6 +4,7 @@
 """
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.sensors import Laser
+from roboviz import MapVisualizer
 
 class SLAMWrapper:
     """
@@ -26,6 +27,7 @@ class SLAMWrapper:
         self.map_size_pixels = map_size_pixels  # 保存地图尺寸
         self.laser = Laser(**laser_params)
         self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)
+        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'SLAM')
         
     def get_map(self):
         """
@@ -69,27 +71,13 @@ class SLAMWrapper:
         
     def visualize_map(self, map_data):
         """
-        可视化地图数据，使用不同字符表示不同的障碍物密度。
-        打印一个 20x20 的地图概览。
+        使用 roboviz 库可视化地图数据。
 
         参数:
             map_data (bytearray): 地图的字节数组数据。
         """
-        print("当前地图概览(20x20):")
-        # 打印20x20的地图，使用不同字符表示不同障碍物密度
-        for i in range(0, min(20, self.map_size_pixels)):
-            row = []
-            for j in range(0, min(20, self.map_size_pixels)):
-                byte = map_data[i*self.map_size_pixels + j]
-                if byte > 220:
-                    row.append('#')  # 高密度障碍物
-                elif byte > 150:
-                    row.append('*')  # 中等密度障碍物
-                elif byte > 30:
-                    row.append('.')  # 低密度障碍物
-                else:
-                    row.append(' ')
-            print(''.join(row))
+        x, y, theta = self.get_position()
+        return self.viz.display(x/1000., y/1000., theta, mapbytes=map_data)
 
 
 """
@@ -130,9 +118,10 @@ while True:
     # 显示处理进度和结果
     slam.print_progress(iteration)
     print(f"当前位姿: x={x}mm, y={y}mm, θ={theta}°")
-    slam.visualize_map(map_data)
+    if not slam.visualize_map(map_data):
+        break
     
     # 控制输出频率
     import time
-    time.sleep(1)
+    time.sleep(0.001)
 
