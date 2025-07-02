@@ -5,21 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/debug_slam_map_step1.npy" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration/frontier_detect.py" beforeDir="false" afterPath="$PROJECT_DIR$/exploration/frontier_detect.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration_final_map.npy" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration_final_map.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration_final_map.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration_lidar.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration_trajectory.npy" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration_trajectory.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/generate_map_segments.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/generate_trajectory_map_json.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/planner/visualize_path.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/visualize_path.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/simulate_exploration.py" beforeDir="false" afterPath="$PROJECT_DIR$/simulate_exploration.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/trajectory_segments.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/slam/slam.py" beforeDir="false" afterPath="$PROJECT_DIR$/slam/slam.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -62,6 +48,8 @@
     "Python 测试.Python 测试 (test_system_unittest.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_visualization.py 内).executor": "Run",
     "Python 测试.Python 测试 (visualize_path.py 内).executor": "Run",
+    "Python.SLAM.executor": "Run",
+    "Python.breezy_slam_adapter.executor": "Run",
     "Python.data_logger.executor": "Run",
     "Python.demo_complete_system.executor": "Run",
     "Python.dwa_planner.executor": "Run",
@@ -92,7 +80,9 @@
     "Python.simple_exploration_demo.executor": "Run",
     "Python.simple_test.executor": "Run",
     "Python.simulate_exploration.executor": "Run",
+    "Python.simulate_exploration_new.executor": "Run",
     "Python.slam_demo.executor": "Run",
+    "Python.test.executor": "Run",
     "Python.test1.executor": "Run",
     "Python.visualize_dwa_path.executor": "Run",
     "Python.visualize_path.executor": "Run",
@@ -100,7 +90,7 @@
     "Python.测试.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "正在合并 main",
     "last_opened_file_path": "D:/PycharmProjects/PythonProject1",
     "settings.editor.selected.configurable": "vcs.Git"
   }
@@ -108,6 +98,7 @@
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\PycharmProjects\PythonProject1" />
+      <recent name="D:\PycharmProjects\PythonProject1\viz" />
     </key>
   </component>
   <component name="SharedIndexes">

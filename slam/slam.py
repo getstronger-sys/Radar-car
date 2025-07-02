@@ -6,18 +6,19 @@ from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.sensors import Laser
 from roboviz import MapVisualizer
 
+
 class CarSLAM:
     def __init__(self, map_size_pixels=500, map_size_meters=10, laser_params=None):
         # 初始化激光模型（示例参数，需根据实际激光雷达调整）
         self.laser = Laser(scan_size=360, scan_rate_hz=100, detection_angle_degrees=360,
-                          distance_no_detection_mm=10000, detection_margin=0, offset_mm=0)
+                           distance_no_detection_mm=10000, detection_margin=0, offset_mm=0)
         # 初始化SLAM对象
         self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)
         self.mapbytes = bytearray(map_size_pixels * map_size_pixels)
         # 初始化可视化工具
         self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'Car SLAM Visualization')
 
-    def update_position(self, lidar_scan, pose_change,x,y,theta):
+    def update_position(self, lidar_scan, pose_change, x, y, theta):
         # 假设lidar_scan是当前激光雷达扫描数据（列表形式）
         # 更新SLAM（传入里程计数据）
         self.slam.update(lidar_scan, pose_change)
@@ -26,7 +27,7 @@ class CarSLAM:
         # 更新地图
         self.slam.getmap(self.mapbytes)
         # 显示地图和当前位置（转换为米）
-        self.viz.display(x_mm/1000, y_mm/1000, theta_degrees, self.mapbytes)
+        self.viz.display(x_mm / 1000, y_mm / 1000, theta_degrees, self.mapbytes)
         return x_mm, y_mm, theta_degrees
 
     def simulate_straight_line(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, distance_mm=8000, step_mm=100):
@@ -53,8 +54,6 @@ class CarSLAM:
             self.update_position(lidar_scan, pose_change, x, y, theta)
             time.sleep(0.1)
 
-        
-        
         # 延迟更新（保持可视化）
         plt.pause(0.5)
 
@@ -145,7 +144,6 @@ def generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, fie
         scan.append(min(distance, max_range_mm))
 
     return scan
-
 
 
 if __name__ == '__main__':

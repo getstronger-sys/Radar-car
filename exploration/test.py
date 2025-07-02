@@ -8,6 +8,8 @@ from matplotlib.patches import Circle, FancyArrow, Rectangle
 from scipy.ndimage import label, binary_dilation
 import time
 import heapq
+from config.map import get_global_map, MAP_RESOLUTION
+from config.settings import START_POSITION
 
 
 class LidarScan:
@@ -32,7 +34,7 @@ class Robot:
         self.theta = theta
         self.max_speed = 0.5
         self.max_angular_speed = 1.0
-        self.radius = 0.1
+        self.radius = 0.15
 
     def is_position_safe(self, x, y, occupancy_grid, resolution, safety_margin=0.15):
         """Check if position is safe (no collision with obstacles)"""
@@ -337,40 +339,33 @@ class AStarPathPlanner:
 
 
 class SimplifiedFrontierExplorer:
-    def __init__(self, map_data, resolution=0.1, enable_visualization=True):
-        self.resolution = resolution
-        self.map_converter = MapConverter(resolution)
-        self.lidar_sim = LidarSimulator(range_max=5.0, num_beams=180)
-        self.path_planner = AStarPathPlanner(resolution, safety_margin=0.15)
-        self.enable_visualization = enable_visualization
+    def __init__(self, enable_visualization=True):
+        # 直接用全局地图和分辨率
+        self.resolution = MAP_RESOLUTION
+        self.true_map = get_global_map()
 
-        # Convert map
-        self.true_map = self.map_converter.segments_to_occupancy_grid(
-            map_data['segments'], (16, 16)
-        )
-
-        # Initialize SLAM map (unknown at start)
+        # SLAM map 初始化为未知
         self.slam_map = np.full_like(self.true_map, -1, dtype=np.float32)
 
-        # Initialize robot
-        start_pos = map_data['start_point']
+        # 机器人起点
+        start_pos = [START_POSITION['x'], START_POSITION['y']]
         self.robot = Robot(start_pos[0], start_pos[1], 0)
 
-        # Data storage
+        # 其它初始化保持不变
         self.lidar_data = []
         self.odometry_data = []
         self.robot_path = []
         self.timestamp = 0
-
-        # Exploration parameters
         self.exploration_complete = False
         self.current_target = None
         self.current_path = None
         self.path_index = 0
         self.frontiers = []
         self.current_scan_points = []
-
-        # Visualization setup
+        self.enable_visualization = enable_visualization
+        self.map_converter = MapConverter(self.resolution)
+        self.lidar_sim = LidarSimulator(range_max=5.0, num_beams=180)
+        self.path_planner = AStarPathPlanner(self.resolution, safety_margin=0.15)
         if self.enable_visualization:
             self.setup_visualization()
 
@@ -410,15 +405,16 @@ class SimplifiedFrontierExplorer:
         self.true_map_img = self.ax1.imshow(self.true_map, cmap='binary', origin='lower', alpha=0.8)
 
         # Custom colormap for SLAM map
-        slam_cmap = plt.cm.RdYlGn_r
+        slam_cmap = plt.get_cmap('RdYlGn_r')
         self.slam_map_img = self.ax2.imshow(self.slam_map, cmap=slam_cmap, origin='lower',
                                             vmin=-1, vmax=1, alpha=0.9)
 
         # Robot visualization with enhanced styling
         robot_color = '#ff4444'
-        self.robot_true = Circle((0, 0), 3, color=robot_color, alpha=0.9, linewidth=2,
+        robot_radius_grid = self.robot.radius / self.resolution
+        self.robot_true = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
                                  edgecolor='white', zorder=10)
-        self.robot_slam = Circle((0, 0), 3, color=robot_color, alpha=0.9, linewidth=2,
+        self.robot_slam = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
                                  edgecolor='white', zorder=10)
 
         self.ax1.add_patch(self.robot_true)
@@ -434,7 +430,7 @@ class SimplifiedFrontierExplorer:
         self.frontier_points, = self.ax2.plot([], [], 'o', color='#00ff88', markersize=10,
                                               alpha=0.9, label='Frontier Points', zorder=8)
 
-        self.target_point, = self.ax2.plot([], [], '*', color='#ffff00', markersize=25,
+        self.target_point, = self.ax2.plot([], [], '*', color='#ffff00', markersize=8,
                                            label='Current Target', zorder=9)
 
         # Planned path visualization (only on SLAM map)
@@ -526,6 +522,10 @@ class SimplifiedFrontierExplorer:
         """Fast ray update using simplified line drawing"""
         distance = np.hypot(end_x - start_x, end_y - start_y)
         num_samples = int(distance / self.resolution) + 1
+
+        # 确保 num_samples 至少为1
+        if num_samples < 1:
+            num_samples = 1
 
         for i in range(num_samples):
             ratio = i / max(num_samples - 1, 1)
@@ -667,12 +667,23 @@ class SimplifiedFrontierExplorer:
             self.robot_arrow_slam.remove()
 
         # Add new arrows
-        arrow_length = 8
+        arrow_length = self.robot.radius / self.resolution * 2  # 箭头长度为小车半径的2倍（单位：格）
         dx = arrow_length * math.cos(self.robot.theta)
         dy = arrow_length * math.sin(self.robot.theta)
 
-        arrow_style = dict(head_width=3, head_length=2.5, fc='#ffffff', ec='#ffffff',
-                           linewidth=2, alpha=0.9, zorder=15)
+        # 让箭头头部宽度和长度也随箭头长度缩放
+        head_width = arrow_length * 0.5   # 你可以调节这个系数
+        head_length = arrow_length * 0.4  # 你可以调节这个系数
+
+        arrow_style = dict(
+            head_width=head_width,
+            head_length=head_length,
+            fc='#ffffff',
+            ec='#ffffff',
+            linewidth=2.0,
+            alpha=0.9,
+            zorder=15
+        )
 
         self.robot_arrow_true = FancyArrow(robot_x_grid, robot_y_grid, dx, dy, **arrow_style)
         self.robot_arrow_slam = FancyArrow(robot_x_grid, robot_y_grid, dx, dy, **arrow_style)
@@ -900,51 +911,11 @@ class SimplifiedFrontierExplorer:
 
 # Example usage
 if __name__ == "__main__":
-    # Map data
-    map_data = {
-        "segments": [
-            {"start": [0, 0], "end": [2, 0]},
-            {"start": [2, 0], "end": [2, 2]},
-            {"start": [0, 0], "end": [0, 15]},
-            {"start": [0, 11], "end": [2, 11]},
-            {"start": [2, 11], "end": [2, 6]},
-            {"start": [2, 6], "end": [4, 6]},
-            {"start": [0, 15], "end": [11, 15]},
-            {"start": [2, 15], "end": [2, 13]},
-            {"start": [2, 13], "end": [9, 13]},
-            {"start": [4, 13], "end": [4, 8]},
-            {"start": [6, 13], "end": [6, 10]},
-            {"start": [6, 10], "end": [9, 10]},
-            {"start": [9, 10], "end": [9, 13]},
-            {"start": [11, 15], "end": [11, 10]},
-            {"start": [4, 0], "end": [4, 2]},
-            {"start": [4, 0], "end": [15, 0]},
-            {"start": [11, 0], "end": [11, 2]},
-            {"start": [11, 2], "end": [6, 2]},
-            {"start": [6, 2], "end": [6, 6]},
-            {"start": [6, 4], "end": [2, 4]},
-            {"start": [9, 2], "end": [9, 4]},
-            {"start": [15, 0], "end": [15, 15]},
-            {"start": [15, 6], "end": [13, 6]},
-            {"start": [13, 6], "end": [13, 2]},
-            {"start": [15, 15], "end": [13, 15]},
-            {"start": [13, 15], "end": [13, 8]},
-            {"start": [13, 8], "end": [11, 8]}
-        ],
-        "start_point": [3, 1]
-    }
-
-    # Simplified visualization mode - only two windows
     print("🎨 === Simplified Frontier Exploration with Dual Display ===")
-    explorer = SimplifiedFrontierExplorer(map_data, resolution=0.1, enable_visualization=True)
-
-    # Run exploration with customizable speed
-    exploration_data = explorer.run_exploration(max_steps=2000, delay=0.02)
-
-    # Save data
+    explorer = SimplifiedFrontierExplorer(enable_visualization=True)
+    exploration_data = explorer.run_exploration(max_steps=500, delay=0.02)
     with open('simplified_exploration_data.json', 'w', encoding='utf-8') as f:
         json.dump(exploration_data, f, indent=2, ensure_ascii=False)
-
     print("💾 Exploration data saved to 'simplified_exploration_data.json'")
     print(f"📊 Collected {len(exploration_data['lidar_scans'])} LiDAR scans")
     print(f"📊 Collected {len(exploration_data['odometry'])} odometry readings")

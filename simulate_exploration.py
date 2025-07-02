@@ -6,12 +6,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from config.map import get_global_map, MAP_SIZE, MAP_RESOLUTION
 from config.settings import START_POSITION, ROBOT_RADIUS
-from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete
+from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, detect_frontiers, select_best_frontier
 import heapq
 import json
 import os
 from matplotlib.colors import ListedColormap
 import re
+from matplotlib.patches import Circle
 
 # ==================== 输出目录设置 ====================
 OUTPUT_DIR = 'output'
@@ -172,80 +173,92 @@ def astar(start, goal, occ_map):
     return None  # 无法找到路径
 
 # ==================== 可视化函数 ====================
-def plot_map(true_map, known_map, robot_pos, trajectory, target=None, scan=None, robot_theta=None, return_path=None):
-    """
-    绘制地图和机器人状态的可视化图像
-    
-    参数:
-    true_map: 真实地图
-    known_map: 已知地图
-    robot_pos: 机器人当前位置
-    trajectory: 机器人轨迹
-    target: 目标位置（可选）
-    scan: 激光雷达扫描结果（可选）
-    robot_theta: 机器人朝向（可选）
-    return_path: 返回路径（可选）
-    """
-    plt.clf()  # 清除当前图形
-    
-    # 绘制真实地图（半透明灰色）
-    plt.imshow(true_map, cmap='gray_r', alpha=0.3, origin='lower')
-    
-    # 绘制已知地图（蓝色渐变）
+def plot_map(
+    true_map, known_map, robot_pos, trajectory,
+    target=None, scan=None, robot_theta=None, return_path=None,
+    ax=None, frontiers=None
+):
+    if ax is None:
+        ax = plt.gca()
+    ax.clear()
+    ax.imshow(true_map, cmap='gray_r', alpha=0.3, origin='lower')
     show_map = known_map.copy()
-    show_map[show_map == -1] = 0.5  # 将未知区域显示为灰色
-    plt.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
-    
-    # 绘制机器人轨迹（绿色线条）
-    plt.plot([p[0]/MAP_RESOLUTION for p in trajectory], 
-             [p[1]/MAP_RESOLUTION for p in trajectory], 'g.-', label='Exploration Trajectory', linewidth=2)
-    
-    # 绘制机器人当前位置（红色圆点）
-    plt.plot(robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION, 'ro', label='Robot', markersize=8)
-    
-    # 绘制目标位置（黄色星号）
+    show_map[show_map == -1] = 0.5
+    ax.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
+    ax.plot([p[0]/MAP_RESOLUTION for p in trajectory], [p[1]/MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
+    ax.plot(robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION, 'ro', markersize=8)
     if target is not None:
-        plt.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, 'yx', 
-                markersize=12, label='Target')
-        plt.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, 
-                marker='*', color='y', markersize=18, label='Best Frontier')
-    
-    # 绘制激光雷达扫描线（红色半透明线条）
+        ax.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, 'yx', markersize=12)
+        ax.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, marker='*', color='y', markersize=18)
     if scan is not None and robot_theta is not None:
         for i, dist in enumerate(scan):
             angle = np.deg2rad(i * LIDAR_ANGLE_RES)
             a = robot_theta + angle
             x_end = robot_pos[0] + dist * np.cos(a)
             y_end = robot_pos[1] + dist * np.sin(a)
-            plt.plot(
+            ax.plot(
                 [robot_pos[0]/MAP_RESOLUTION, x_end/MAP_RESOLUTION],
                 [robot_pos[1]/MAP_RESOLUTION, y_end/MAP_RESOLUTION],
                 color='red', alpha=0.18, linewidth=0.7
             )
-    
-    # 绘制返回路径（蓝色线条）
     if return_path is not None:
-        plt.plot([p[0]/MAP_RESOLUTION for p in return_path], 
-                 [p[1]/MAP_RESOLUTION for p in return_path], 'b.-', label='Return Path', linewidth=2, alpha=0.8)
-    
-    # 绘制起点位置（绿色星号）
+        ax.plot([p[0]/MAP_RESOLUTION for p in return_path], [p[1]/MAP_RESOLUTION for p in return_path], 'b.-', linewidth=2, alpha=0.8)
     start_pos = np.array([START_POSITION['x'], START_POSITION['y']])
-    plt.plot(start_pos[0]/MAP_RESOLUTION, start_pos[1]/MAP_RESOLUTION, 
-             marker='*', color='green', markersize=15, label='Start Position')
-    
-    # 设置图例和坐标轴
-    plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left')
-    plt.xlim(0, MAP_SIZE)
-    plt.ylim(0, MAP_SIZE)
-    
-    # 绘制机器人轮廓（红色虚线圆圈）
-    circle = patches.Circle((robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION), 
-                           radius=ROBOT_RADIUS/MAP_RESOLUTION, fill=False, 
-                           color='r', linestyle='--')
-    plt.gca().add_patch(circle)
-    
-    plt.tight_layout(rect=(0, 0, 0.93, 1))
-    plt.pause(0.01)  # 短暂暂停以显示动画效果
+    ax.plot(start_pos[0]/MAP_RESOLUTION, start_pos[1]/MAP_RESOLUTION, marker='*', color='green', markersize=15)
+    if frontiers is not None and len(frontiers) > 0:
+        fx = [f[0]/MAP_RESOLUTION for f in frontiers]
+        fy = [f[1]/MAP_RESOLUTION for f in frontiers]
+        ax.scatter(fx, fy, c='#00ff88', s=30, alpha=0.9, marker='o')
+    ax.set_xlim(0, MAP_SIZE)
+    ax.set_ylim(0, MAP_SIZE)
+    circle = patches.Circle((robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION), radius=ROBOT_RADIUS/MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+    ax.add_patch(circle)
+    ax.set_title('Ground Truth Map')
+
+class SLAMMapVisualizer:
+    def __init__(self, ax, slam_map, resolution, robot_radius=0.15):
+        self.ax = ax
+        self.resolution = resolution
+        self.ax.set_title('SLAM Mapping', fontsize=16)
+        self.ax.set_facecolor('#888888')
+        slam_cmap = ListedColormap(['white', 'black', 'gray'])
+        self.slam_map_img = self.ax.imshow(
+            self._convert_slam_display(slam_map),
+            cmap=slam_cmap,
+            origin='lower',
+            vmin=0,
+            vmax=2,
+            alpha=1.0
+        )
+        self.robot_circle = Circle(
+            (0, 0),
+            20 * robot_radius / resolution,
+            color='red',
+            alpha=1.0,
+            linewidth=3,
+            edgecolor='black',
+            zorder=20
+        )
+        self.ax.add_patch(self.robot_circle)
+        self.path_line, = self.ax.plot([], [], color='#00aaff', linewidth=3, alpha=0.8, label='Robot Path', zorder=5)
+        self.ax.set_xlim(0, slam_map.shape[1])
+        self.ax.set_ylim(0, slam_map.shape[0])
+    def _convert_slam_display(self, slam_map):
+        display = np.zeros_like(slam_map, dtype=int)
+        display[slam_map == 0] = 0      # free
+        display[slam_map == 1] = 1      # obstacle
+        display[slam_map == -1] = 2     # unknown
+        return display
+    def update(self, slam_map, robot_pos, trajectory, scan=None, robot_theta=None, **kwargs):
+        self.slam_map_img.set_array(self._convert_slam_display(slam_map))
+        robot_x_grid = robot_pos[0] / self.resolution
+        robot_y_grid = robot_pos[1] / self.resolution
+        self.robot_circle.center = (robot_x_grid, robot_y_grid)
+        if len(trajectory) > 1:
+            path_x = [p[0] / self.resolution for p in trajectory]
+            path_y = [p[1] / self.resolution for p in trajectory]
+            self.path_line.set_data(path_x, path_y)
+        self.ax.set_title('SLAM Mapping')
 
 # ==================== 轨迹线段生成函数 ====================
 def generate_trajectory_segments(trajectory, output_path):
@@ -402,12 +415,16 @@ def update_exit_position_in_settings(exit_pos, settings_path='config/settings.py
 
 # ==================== 主探索循环 ====================
 plt.ion()  # 开启交互模式，用于实时显示
+fig, (ax_true, ax_slam) = plt.subplots(1, 2, figsize=(16, 8))
+fig.suptitle('Exploration Visualization', fontsize=18)
 step = 0  # 步数计数器
 lidar_log = []  # 激光雷达数据日志
 exploration_complete = False  # 探索完成标志
 return_path = []  # 返回路径记录
 
 print("开始自主探索...")
+
+visualizer = SLAMMapVisualizer(ax_slam, known_map, MAP_RESOLUTION, robot_radius=ROBOT_RADIUS)
 
 while True:
     # 1. 模拟激光雷达扫描
@@ -464,32 +481,69 @@ while True:
         trajectory.append(robot_pos.copy())
         step += 1
         
-        # 11. 定期更新可视化（每2步更新一次）
+        # 11. 获取所有前沿点
+        frontiers = detect_frontiers(known_map, map_resolution=MAP_RESOLUTION)
+
+        # 2. 当前目标（最优前沿点）
+        best_frontier = target  # target 就是你主循环里选出来的目标
+
+        # 3. 当前A*路径（如果有）
+        # path = ...  # 你主循环里A*算出来的路径
+
+        # --- 并排更新两个窗口 ---
         if step % 2 == 0:
-            plot_map(true_map, known_map, robot_pos, trajectory, target, 
-                    scan=scan, robot_theta=robot_theta, return_path=return_path)
+            plot_map(
+                true_map, known_map, robot_pos, trajectory, target,
+                scan=scan, robot_theta=robot_theta, return_path=return_path,
+                ax=ax_true, frontiers=frontiers
+            )
+        visualizer.update(
+            slam_map=known_map,
+            robot_pos=robot_pos,
+            trajectory=trajectory,
+            scan=scan,
+            robot_theta=robot_theta,
+            frontiers=frontiers,
+            best_frontier=best_frontier,
+            path=path
+        )
+        fig.canvas.draw()
+        fig.canvas.flush_events()
     
     # 12. 返回阶段：沿返回路径移动
     else:
         if return_step < len(return_path) - 1:
             next_pos = np.array(return_path[return_step + 1])
-            
-            # 碰撞检测
             gx, gy = world_to_grid(next_pos[0], next_pos[1], MAP_RESOLUTION)
             if true_map[gy, gx] == 1:
                 print('返回途中碰到障碍，跳过')
                 return_step += 1
                 continue
-            
-            # 更新机器人位置
             robot_pos = next_pos
+            trajectory.append(robot_pos.copy())  # 记录轨迹
             return_step += 1
             step += 1
-            
-            # 更新可视化
+            # --- 并排更新两个窗口 ---
             if step % 2 == 0:
-                plot_map(true_map, known_map, robot_pos, trajectory, target=None, 
-                        scan=scan, robot_theta=robot_theta, return_path=return_path)
+                plot_map(
+                    true_map, known_map, robot_pos, trajectory, target=None,
+                    scan=scan, robot_theta=robot_theta, return_path=return_path,
+                    ax=ax_true, frontiers=frontiers
+                )
+            frontiers = detect_frontiers(known_map, map_resolution=MAP_RESOLUTION)
+            best_frontier = None
+            visualizer.update(
+                slam_map=known_map,
+                robot_pos=robot_pos,
+                trajectory=trajectory,
+                scan=scan,
+                robot_theta=robot_theta,
+                frontiers=frontiers,
+                best_frontier=best_frontier,
+                path=return_path
+            )
+            fig.canvas.draw()
+            fig.canvas.flush_events()
         else:
             print('已成功返回起点！')
             break
@@ -515,9 +569,7 @@ with open(os.path.join(OUTPUT_DIR, 'exploration_lidar.json'), 'w') as f:
 print('轨迹、返回路径、已知地图和激光数据已保存。')
 
 # ==================== 最终可视化 ====================
-plt.ioff()  # 关闭交互模式
-plot_map(true_map, known_map, robot_pos, trajectory, target=None, 
-         scan=scan, robot_theta=robot_theta, return_path=return_path)
+plt.ioff()
 plt.show()
 
 # ==================== 保存最终地图图片 ====================
