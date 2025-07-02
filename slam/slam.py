@@ -8,7 +8,8 @@ from roboviz import MapVisualizer
 from config.map import get_global_map
 from config.settings import START_POSITION, EXIT_POSITION, MAP_RESOLUTION
 import heapq
-from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, detect_frontiers
+from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, \
+    detect_frontiers
 from matplotlib.patches import Circle
 
 
@@ -52,41 +53,43 @@ class CarSLAM:
             time.sleep(0.1)
         plt.pause(0.5)
 
-    def simulate_curved_path(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, radius_mm=5000, angle_deg=90, step_mm=100):
+    def simulate_curved_path(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, radius_mm=5000, angle_deg=90,
+                             step_mm=100):
         """模拟小车沿圆弧路径运动"""
         # 转换角度为弧度
         angle_rad = math.radians(angle_deg)
         start_theta_rad = math.radians(start_theta_deg)
-        
+
         # 计算圆弧长度和步数
         arc_length_mm = radius_mm * angle_rad
         num_steps = max(1, int(arc_length_mm / step_mm))
-        
+
         # 计算圆心位置（左转）
-        center_x = start_x_mm + radius_mm * math.cos(start_theta_rad + math.pi/2)
-        center_y = start_y_mm + radius_mm * math.sin(start_theta_rad + math.pi/2)
-        
+        center_x = start_x_mm + radius_mm * math.cos(start_theta_rad + math.pi / 2)
+        center_y = start_y_mm + radius_mm * math.sin(start_theta_rad + math.pi / 2)
+
         x, y, theta = start_x_mm, start_y_mm, start_theta_deg
-        
+
         for i in range(num_steps):
             # 计算当前角度和位置
-            current_angle_rad = start_theta_rad + (i / num_steps) * angle_rad + math.pi/2
+            current_angle_rad = start_theta_rad + (i / num_steps) * angle_rad + math.pi / 2
             x = center_x - radius_mm * math.cos(current_angle_rad)
             y = center_y - radius_mm * math.sin(current_angle_rad)
             theta = start_theta_deg + (i / num_steps) * angle_deg
-            
+
             # 生成激光扫描数据
             lidar_scan = generate_square_lidar_scan(x, y, theta)
-            
+
             # 计算步长和角度变化
             delta_theta = angle_deg / num_steps
             pose_change = (step_mm, delta_theta, 0)
-            
+
             # 更新SLAM位置
             self.update_position(lidar_scan, pose_change, x, y, theta)
             time.sleep(0.1)
-        
+
         plt.pause(0.5)
+
 
 def generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, field_width_mm=10000, max_range_mm=10000):
     """模拟长方形场地中的激光雷达扫描数据"""
@@ -140,6 +143,7 @@ def generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, fie
 
     return scan
 
+
 def generate_lidar_scan_from_gridmap(x_mm, y_mm, theta_deg, grid_map, map_resolution, max_range_mm=4000, scan_size=360):
     """
     基于栅格地图的激光雷达模拟。
@@ -175,10 +179,12 @@ def generate_lidar_scan_from_gridmap(x_mm, y_mm, theta_deg, grid_map, map_resolu
         scan.append(distance)
     return scan
 
+
 # ========== 常量定义 ==========
 LIDAR_ANGLE_RES = 1  # 每1度一束激光，360束
 LIDAR_NUM = 360
 LIDAR_MAX_DIST = 20.0  # 激光最大探测距离（米，可根据需要调整）
+
 
 # ========== A* 路径规划 ==========
 def astar(start, goal, occ_map, map_resolution, map_size):
@@ -188,7 +194,7 @@ def astar(start, goal, occ_map, map_resolution, map_size):
     heapq.heappush(open_set, (0, (sx, sy)))
     came_from = {}
     g_score = {(sx, sy): 0}
-    dirs = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)]
+    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
     while open_set:
         _, current = heapq.heappop(open_set)
         if current == (gx, gy):
@@ -199,22 +205,23 @@ def astar(start, goal, occ_map, map_resolution, map_size):
             path.reverse()
             return [grid_to_world(x, y, map_resolution) for x, y in path]
         for dx, dy in dirs:
-            nx, ny = current[0]+dx, current[1]+dy
+            nx, ny = current[0] + dx, current[1] + dy
             if 0 <= nx < map_size and 0 <= ny < map_size and occ_map[ny, nx] != 1:
                 tentative_g = g_score[current] + np.hypot(dx, dy)
                 if (nx, ny) not in g_score or tentative_g < g_score[(nx, ny)]:
                     g_score[(nx, ny)] = tentative_g
-                    f = tentative_g + np.hypot(gx-nx, gy-ny)
+                    f = tentative_g + np.hypot(gx - nx, gy - ny)
                     heapq.heappush(open_set, (f, (nx, ny)))
                     came_from[(nx, ny)] = current
     return None
+
 
 # ========== 地图更新 ==========
 def update_known_map(pos, scan, known_map, robot_theta, map_resolution, lidar_angle_res, lidar_max_dist):
     for i, dist in enumerate(scan):
         angle = np.deg2rad(i * lidar_angle_res)
         a = robot_theta + angle
-        for r in np.arange(0, min(dist, lidar_max_dist), map_resolution/2):
+        for r in np.arange(0, min(dist, lidar_max_dist), map_resolution / 2):
             x = pos[0] + r * np.cos(a)
             y = pos[1] + r * np.sin(a)
             gx, gy = world_to_grid(x, y, map_resolution)
@@ -229,16 +236,18 @@ def update_known_map(pos, scan, known_map, robot_theta, map_resolution, lidar_an
             if 0 <= gx < known_map.shape[1] and 0 <= gy < known_map.shape[0]:
                 known_map[gy, gx] = 1
 
+
 def is_frontier(known_map, gx, gy):
     if known_map[gy, gx] != 0:
         return False
     # 只要有一个邻居是未知区，就是frontier
-    for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
-        nx, ny = gx+dx, gy+dy
+    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        nx, ny = gx + dx, gy + dy
         if 0 <= nx < known_map.shape[1] and 0 <= ny < known_map.shape[0]:
             if known_map[ny, nx] == -1:
                 return True
     return False
+
 
 # ========== 主循环 ==========
 if __name__ == '__main__':
@@ -246,6 +255,7 @@ if __name__ == '__main__':
         import matplotlib.pyplot as plt
         from config.map import MAP_SIZE
         from config.settings import ROBOT_RADIUS
+
         true_map = get_global_map()
         known_map = np.full_like(true_map, -1, dtype=float)
         explorer = ExplorationManager(map_resolution=MAP_RESOLUTION)
@@ -259,11 +269,11 @@ if __name__ == '__main__':
         MAP_PIXELS = int(MAP_PIXELS + 2 * (PADDING / MAP_RESOLUTION))
         slam = CarSLAM(map_size_pixels=MAP_PIXELS, map_size_meters=MAP_METERS, grid_map=true_map)
         plt.ion()
-        fig, ax = plt.subplots(figsize=(8,8))
+        fig, ax = plt.subplots(figsize=(8, 8))
         # 先用起点位置做一次激光扫描，更新已知地图
         scan_mm = generate_lidar_scan_from_gridmap(
-            robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta),
-            true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST*1000), scan_size=LIDAR_NUM)
+            robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+            true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
         scan = np.array(scan_mm) / 1000.0  # 转为米
         update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
         print('激光初始化后已知地图空地数：', np.sum(known_map == 0))
@@ -275,8 +285,8 @@ if __name__ == '__main__':
         while True:
             # 1. 用真实地图模拟激光
             scan_mm = generate_lidar_scan_from_gridmap(
-                robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta),
-                true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST*1000), scan_size=LIDAR_NUM)
+                robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+                true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
             scan = np.array(scan_mm) / 1000.0  # 转为米
             # 2. 更新已知地图
             update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
@@ -299,7 +309,8 @@ if __name__ == '__main__':
                 print(f'无法到达目标，path={path}，target={target}，robot_pos={robot_pos}')
                 gx, gy = world_to_grid(target[0], target[1], MAP_RESOLUTION)
                 print(f"A*失败，目标点格子({gx},{gy})，known_map值={known_map[gy, gx]}")
-                print(f"robot_pos={robot_pos}, robot格子={world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)}, known_map值={known_map[world_to_grid(robot_pos[1], robot_pos[0], MAP_RESOLUTION)]}")
+                print(
+                    f"robot_pos={robot_pos}, robot格子={world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)}, known_map值={known_map[world_to_grid(robot_pos[1], robot_pos[0], MAP_RESOLUTION)]}")
                 # 可视化known_map，标出robot和target
                 plt.imshow(known_map, cmap='Blues', origin='lower')
                 plt.plot(gx, gy, 'rx', label='target')
@@ -328,11 +339,13 @@ if __name__ == '__main__':
                         pose_change = (move * 1000, 0, 0)
                     # 激光模拟
                     scan_mm = generate_lidar_scan_from_gridmap(
-                        robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta),
-                        true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST*1000), scan_size=LIDAR_NUM)
+                        robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+                        true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
                     scan = np.array(scan_mm) / 1000.0
-                    update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
-                    slam.update_position(scan_mm, pose_change, robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta))
+                    update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES,
+                                     LIDAR_MAX_DIST)
+                    slam.update_position(scan_mm, pose_change, robot_pos[0] * 1000, robot_pos[1] * 1000,
+                                         np.rad2deg(robot_theta))
                     trajectory.append(robot_pos.copy())
                     # 可视化
                     ax.clear()
@@ -342,14 +355,17 @@ if __name__ == '__main__':
                     show_map[show_map == -1] = 0.5
                     ax.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
                     # 轨迹和小车位置用世界坐标
-                    ax.plot([p[0]/MAP_RESOLUTION for p in trajectory], [p[1]/MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
-                    ax.plot(robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION, 'ro', markersize=8)
+                    ax.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory],
+                            'g.-', linewidth=2)
+                    ax.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
                     if target is not None:
-                        ax.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, 'yx', markersize=12)
-                        ax.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, marker='*', color='y', markersize=18)
+                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
+                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y',
+                                markersize=18)
                     ax.set_xlim(0, MAP_SIZE)
                     ax.set_ylim(0, MAP_SIZE)
-                    circle = Circle((robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION), radius=ROBOT_RADIUS/MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION),
+                                    radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
                     ax.add_patch(circle)
                     ax.set_title('SLAM Exploration')
                     plt.pause(0.01)
@@ -362,6 +378,7 @@ if __name__ == '__main__':
         input('按回车退出...')
     except Exception as e:
         import traceback
+
         print('全局异常:', e)
         traceback.print_exc()
         input('按回车退出...')
