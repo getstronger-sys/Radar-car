@@ -1,127 +1,68 @@
-"""
-此模块实现了 SLAMWrapper 类，用于集成 BreezySLAM 库，实现基于激光雷达数据和位姿变化的 SLAM 功能。
-提供地图更新、获取当前位姿和地图可视化等功能。
-"""
+import time
+import numpy as np
+import matplotlib.pyplot as plt
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.sensors import Laser
 from roboviz import MapVisualizer
 
-class SLAMWrapper:
-    """
-    封装 BreezySLAM 的 RMHC_SLAM 类，提供简单的接口用于更新 SLAM 状态、获取地图和当前位姿，以及可视化地图。
+def generate_square_lidar_scan(pose_x_mm, pose_y_mm, pose_theta_deg, square_size_m=4, scan_size=360):
+    """生成正方形场地的模拟激光雷达扫描数据（360度）"""
+    scan = []
+    theta_rad = np.deg2rad(pose_theta_deg)
+    
+    # 正方形边界坐标（米）
+    half_size = square_size_m / 2
+    x_min, x_max = -half_size, half_size
+    y_min, y_max = -half_size, half_size
+    
+    for angle_deg in np.linspace(0, 360, scan_size, endpoint=False): 
+        angle_rad = np.deg2rad(angle_deg) + theta_rad
+        dx = np.cos(angle_rad)
+        dy = np.sin(angle_rad)
+        
+        # 计算到各边的距离（米）
+        t_xmin = (x_min - (pose_x_mm/1000)) / dx if dx != 0 else np.inf
+        t_xmax = (x_max - (pose_x_mm/1000)) / dx if dx != 0 else np.inf
+        t_ymin = (y_min - (pose_y_mm/1000)) / dy if dy != 0 else np.inf
+        t_ymax = (y_max - (pose_y_mm/1000)) / dy if dy != 0 else np.inf
+        
+        # 取最近的有效交点
+        valid_ts = [t for t in [t_xmin, t_xmax, t_ymin, t_ymax] if t > 0]
+        if not valid_ts:
+            # 无有效交点时返回最大检测距离（避免空数组错误）
+            t = square_size_m * np.sqrt(2)
+        else:
+            t = np.min(valid_ts)
+        distance_m = np.clip(t, 0.1, square_size_m*np.sqrt(2))  # 最小检测距离0.1米
+        scan.append(int(distance_m * 1000))  # 转换为毫米
+    
+    return scan
 
-    属性:
-        map_size_pixels (int): 地图的像素大小。
-        laser (Laser): 激光雷达对象。
-        slam (RMHC_SLAM): RMHC_SLAM 实例，用于执行 SLAM 算法。
-    """
-    def __init__(self, laser_params, map_size_pixels=500, map_size_meters=10):
-        """
-        初始化 SLAMWrapper 实例。
-
-        参数:
-            laser_params (dict): 激光雷达的参数，用于初始化 Laser 对象。
-            map_size_pixels (int, 可选): 地图的像素大小，默认为 500。
-            map_size_meters (int, 可选): 地图的实际大小（米），默认为 10。
-        """
-        self.map_size_pixels = map_size_pixels  # 保存地图尺寸
-        self.laser = Laser(**laser_params)
+class CarSLAM:
+    def __init__(self, map_size_pixels=500, map_size_meters=10, laser_params=None):
+        # 初始化激光模型（示例参数，需根据实际激光雷达调整）
+        self.laser = Laser(scan_size=180, scan_rate_hz=100, detection_angle_degrees=180,
+                          distance_no_detection_mm=10000, detection_margin=0, offset_mm=0)
+        # 初始化SLAM对象
         self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)
-        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'SLAM')
+        self.mapbytes = bytearray(map_size_pixels * map_size_pixels)
+        # 初始化可视化工具
+        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'Car SLAM Visualization')
+
+    def update_position(self, lidar_scan, pose_change,x,y,theta):
+        # 假设lidar_scan是当前激光雷达扫描数据（列表形式）
+        # 更新SLAM（传入里程计数据）
+        self.slam.update(lidar_scan, pose_change)
+        # 获取更精确的位置
+        x_mm, y_mm, theta_degrees = x,y,theta
+        # 更新地图
+        self.slam.getmap(self.mapbytes)
+        # 显示地图和当前位置（转换为米）
+        self.viz.display(x_mm/1000, y_mm/1000, theta_degrees, self.mapbytes)
+        return x_mm, y_mm, theta_degrees
+
+
         
-    def get_map(self):
-        """
-        获取当前的地图数据。
-
-        返回:
-            bytearray: 当前地图的字节数组，大小为 map_size_pixels * map_size_pixels。
-        """
-        mapbytes = bytearray(self.map_size_pixels * self.map_size_pixels)
-        self.slam.getmap(mapbytes)
-        return mapbytes
         
-    def update(self, scan_distances, pose_change):
-        """
-        根据激光雷达扫描数据和位姿变化更新 SLAM 状态。
-
-        参数:
-            scan_distances (list): 激光雷达扫描距离列表，单位为毫米。
-            pose_change (tuple): 位姿变化元组，格式为 (dx_mm, dy_mm, dtheta_degrees, dt_seconds)。
-        """
-        dx_mm, dy_mm, dtheta_degrees, dt_seconds = pose_change
-        self.slam.update(scan_distances, (dx_mm, dy_mm, dtheta_degrees, dt_seconds))
-        
-    def get_position(self):
-        """
-        获取当前机器人的位姿。
-
-        返回:
-            tuple: 当前位姿，格式为 (x_mm, y_mm, theta_degrees)，单位分别为毫米和度。
-        """
-        return self.slam.getpos()
-        
-    def print_progress(self, iteration):
-        """
-        打印当前 SLAM 处理的迭代次数。
-
-        参数:
-            iteration (int): 当前的迭代次数。
-        """
-        print(f"SLAM处理中... 迭代次数: {iteration}")
-        
-    def visualize_map(self, map_data):
-        """
-        使用 roboviz 库可视化地图数据。
-
-        参数:
-            map_data (bytearray): 地图的字节数组数据。
-        """
-        x, y, theta = self.get_position()
-        return self.viz.display(x/1000., y/1000., theta, mapbytes=map_data)
-
-
-"""
-
-下面是示例用法:
-"""
-    # 初始化激光雷达参数
-laser_params = {
-    'scan_size': 360,
-    'scan_rate_hz': 10,
-    'detection_angle_degrees': 240,
-    'distance_no_detection_mm': 4000
-}
-
-# 创建SLAM实例
-slam = SLAMWrapper(laser_params)
-
-# 模拟数据更新循环
-iteration = 0
-while True:
-    iteration += 1
-    # 获取激光雷达数据(模拟)
-    scan_distances = [1000] * 360  # 单位mm
-
-    
-    # 获取IMU位姿变化(模拟)
-    pose_change = (10, 5, 1, 0.1)  # (dx_mm, dy_mm, dtheta_degrees, dt_seconds)
-    
-    # 更新SLAM
-    slam.update(scan_distances, pose_change)
-    
-    # 获取当前位姿
-    x, y, theta = slam.get_position()
-    
-    # 获取地图数据
-    map_data = slam.get_map()
-    
-    # 显示处理进度和结果
-    slam.print_progress(iteration)
-    print(f"当前位姿: x={x}mm, y={y}mm, θ={theta}°")
-    if not slam.visualize_map(map_data):
-        break
-    
-    # 控制输出频率
-    import time
-    time.sleep(0.001)
-
+        # 延迟更新（保持可视化）
+        plt.pause(0.5)
