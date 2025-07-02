@@ -9,7 +9,7 @@ from scipy.ndimage import label, binary_dilation
 import time
 import heapq
 from config.map import get_global_map, MAP_RESOLUTION
-from config.settings import START_POSITION
+from config.settings import START_POSITION, MAP_RESOLUTION
 
 
 class LidarScan:
@@ -84,7 +84,7 @@ class Robot:
 
 
 class MapConverter:
-    def __init__(self, resolution=0.05):
+    def __init__(self, resolution=MAP_RESOLUTION):
         self.resolution = resolution
 
     def segments_to_occupancy_grid(self, segments, map_size=(16, 16)):
@@ -195,8 +195,10 @@ class LidarSimulator:
         return self.range_max
 
 
-def detect_frontiers_optimized(occupancy_grid, unknown_val=-1, free_threshold=0.2, map_resolution=0.01):
-    """Optimized frontier detection function"""
+def detect_frontiers_optimized(occupancy_grid, unknown_val=-1, free_threshold=0.2, map_resolution=None):
+    if map_resolution is None:
+        from config.settings import MAP_RESOLUTION
+        map_resolution = MAP_RESOLUTION
     h, w = occupancy_grid.shape
 
     free_mask = (occupancy_grid >= 0) & (occupancy_grid < free_threshold)
@@ -260,8 +262,10 @@ def world_to_grid(x, y, resolution):
     return int(x / resolution), int(y / resolution)
 
 
-def grid_to_world(gx, gy, resolution):
-    """Convert grid coordinates to world coordinates"""
+def grid_to_world(gx, gy, resolution=None):
+    if resolution is None:
+        from config.settings import MAP_RESOLUTION
+        resolution = MAP_RESOLUTION
     return (gx + 0.5) * resolution, (gy + 0.5) * resolution
 
 
@@ -667,13 +671,13 @@ class SimplifiedFrontierExplorer:
             self.robot_arrow_slam.remove()
 
         # Add new arrows
-        arrow_length = self.robot.radius / self.resolution * 2  # 箭头长度为小车半径的2倍（单位：格）
-        dx = arrow_length * math.cos(self.robot.theta)
-        dy = arrow_length * math.sin(self.robot.theta)
+        arrow_length = float(self.robot.radius) / float(self.resolution) * 2.0  # 箭头长度为小车半径的2倍（单位：格）
+        dx = float(arrow_length * math.cos(self.robot.theta))
+        dy = float(arrow_length * math.sin(self.robot.theta))
 
         # 让箭头头部宽度和长度也随箭头长度缩放
-        head_width = arrow_length * 0.5   # 你可以调节这个系数
-        head_length = arrow_length * 0.4  # 你可以调节这个系数
+        head_width = float(arrow_length * 0.5)   # 你可以调节这个系数
+        head_length = float(arrow_length * 0.4)  # 你可以调节这个系数
 
         arrow_style = dict(
             head_width=head_width,
@@ -685,8 +689,8 @@ class SimplifiedFrontierExplorer:
             zorder=15
         )
 
-        self.robot_arrow_true = FancyArrow(robot_x_grid, robot_y_grid, dx, dy, **arrow_style)
-        self.robot_arrow_slam = FancyArrow(robot_x_grid, robot_y_grid, dx, dy, **arrow_style)
+        self.robot_arrow_true = FancyArrow(float(robot_x_grid), float(robot_y_grid), dx, dy, width=0.05, **arrow_style)
+        self.robot_arrow_slam = FancyArrow(float(robot_x_grid), float(robot_y_grid), dx, dy, width=0.05, **arrow_style)
 
         self.ax1.add_patch(self.robot_arrow_true)
         self.ax2.add_patch(self.robot_arrow_slam)

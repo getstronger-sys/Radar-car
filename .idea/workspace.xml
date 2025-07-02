@@ -5,6 +5,114 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
+      <change afterPath="$PROJECT_DIR$/breezy_slam.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/map.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/map.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/exploration/test.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_viz.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_pose.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_viz.png" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/slam/slam.py" beforeDir="false" afterPath="$PROJECT_DIR$/slam/slam.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -49,6 +157,7 @@
     "Python 测试.Python 测试 (test_visualization.py 内).executor": "Run",
     "Python 测试.Python 测试 (visualize_path.py 内).executor": "Run",
     "Python.SLAM.executor": "Run",
+    "Python.breezy_slam.executor": "Run",
     "Python.breezy_slam_adapter.executor": "Run",
     "Python.data_logger.executor": "Run",
     "Python.demo_complete_system.executor": "Run",
@@ -81,7 +190,9 @@
     "Python.simple_test.executor": "Run",
     "Python.simulate_exploration.executor": "Run",
     "Python.simulate_exploration_new.executor": "Run",
+    "Python.slam.executor": "Run",
     "Python.slam_demo.executor": "Run",
+    "Python.slam_simulation.executor": "Run",
     "Python.test.executor": "Run",
     "Python.test1.executor": "Run",
     "Python.visualize_dwa_path.executor": "Run",
@@ -90,7 +201,7 @@
     "Python.测试.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "正在合并 main",
+    "git-widget-placeholder": "main",
     "last_opened_file_path": "D:/PycharmProjects/PythonProject1",
     "settings.editor.selected.configurable": "vcs.Git"
   }
@@ -100,6 +211,35 @@
       <recent name="D:\PycharmProjects\PythonProject1" />
       <recent name="D:\PycharmProjects\PythonProject1\viz" />
     </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="breezy_slam_adapter" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="maze_robot_project" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="E:/OneDrive/文档/xwechat_files/wxid_02tq8nie0kio22_9a81/msg/file/2025-07" />
+      <option name="IS_MODULE_SDK" value="false" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="E:/OneDrive/文档/xwechat_files/wxid_02tq8nie0kio22_9a81/msg/file/2025-07/breezy_slam_adapter.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.breezy_slam_adapter" />
+      </list>
+    </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
