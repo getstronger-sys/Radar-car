@@ -7,7 +7,7 @@ MAP_SIZE = int(MAP_SIZE_M / MAP_RESOLUTION)  # 地图格子数
 
 # 起始点与出口点坐标（单位：米）
 START_POSITION = {'x': 3.0, 'y': 0.0, 'theta': 0.0}
-EXIT_POSITION = {'x': 12.0, 'y': 14.0, 'theta': 0.0}  # 全局设置终点(12,14.5) - 避免边界问题
+EXIT_POSITION = {'x': 11.7000, 'y': 14.7000, 'theta': 0.0}  # 自动更新终点
 
 # 机器人参数
 """

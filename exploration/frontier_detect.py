@@ -416,14 +416,13 @@ class ExplorationManager:
         self.map_resolution = map_resolution
         self.explored_frontiers = set()
 
-    def get_next_target(self, occupancy_grid, robot_pos, exit_pos=None):
+    def get_next_target(self, occupancy_grid, robot_pos):
         """
         获取下一个探索目标
 
         参数：
         - occupancy_grid: 当前占用栅格地图
         - robot_pos: 机器人当前位置
-        - exit_pos: 出口位置（如果已知）
 
         返回：
         - target_pos: 下一个目标位置，None表示探索完成
@@ -437,37 +436,10 @@ class ExplorationManager:
         if not frontiers:
             return None
 
-        # 如果有出口位置，优先考虑接近出口的前沿
-        if exit_pos is not None:
-            # 选择既接近机器人又接近出口的前沿
-            best_frontier = self._select_balanced_frontier(
-                frontiers, robot_pos, exit_pos
-            )
-        else:
-            # 选择最佳前沿（综合考虑距离和信息增益）
-            best_frontier = select_best_frontier(
-                frontiers, robot_pos, occupancy_grid, self.map_resolution
-            )
+        # 选择最佳前沿（综合考虑距离和信息增益）
+        best_frontier = select_best_frontier(
+            frontiers, robot_pos, occupancy_grid, self.map_resolution
+        )
 
         return best_frontier
 
-    def _select_balanced_frontier(self, frontiers, robot_pos, exit_pos):
-        """
-        选择平衡的前沿点（既接近机器人又接近出口）
-        """
-        if not frontiers:
-            return None
-
-        scores = []
-        for frontier in frontiers:
-            # 到机器人的距离
-            robot_dist = np.hypot(frontier[0] - robot_pos[0], frontier[1] - robot_pos[1])
-            # 到出口的距离
-            exit_dist = np.hypot(frontier[0] - exit_pos[0], frontier[1] - exit_pos[1])
-
-            # 综合评分（越小越好）
-            score = robot_dist * 0.6 + exit_dist * 0.4
-            scores.append(score)
-
-        min_index = np.argmin(scores)
-        return frontiers[min_index]

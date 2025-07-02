@@ -7,12 +7,19 @@
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/planner/dwa_planner.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/dwa_planner.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/planner/path_planner.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/path_planner.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/planner/visualize_dwa_path.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/visualize_dwa_path.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/debug_slam_map_step1.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration/frontier_detect.py" beforeDir="false" afterPath="$PROJECT_DIR$/exploration/frontier_detect.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration_final_map.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration_final_map.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration_final_map.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration_lidar.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration_trajectory.npy" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/exploration_trajectory.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/generate_map_segments.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/generate_trajectory_map_json.py" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/planner/visualize_path.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/visualize_path.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/planner/web_viz.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/web_viz.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/viz/roboviz_slam_viz.py" beforeDir="false" afterPath="$PROJECT_DIR$/viz/roboviz_slam_viz.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/simulate_exploration.py" beforeDir="false" afterPath="$PROJECT_DIR$/simulate_exploration.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/trajectory_segments.json" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,6 +53,8 @@
     "Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor": "Run",
     "Python 测试.Python 测试 (simple_test.py 内).executor": "Run",
     "Python 测试.Python 测试 (simple_viz_test.py 内).executor": "Run",
+    "Python 测试.Python 测试 (slamtester.py 内).executor": "Run",
+    "Python 测试.Python 测试 (test_exploration_slam.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_frontier_detect.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor": "Run",
     "Python 测试.Python 测试 (test_slam_exception.py 内).executor": "Run",
@@ -57,10 +66,15 @@
     "Python.demo_complete_system.executor": "Run",
     "Python.dwa_planner.executor": "Run",
     "Python.dynamic_window_approach.executor": "Run",
+    "Python.exit_detection.executor": "Run",
+    "Python.fast_slam1.executor": "Run",
     "Python.frontier_detect.executor": "Run",
+    "Python.generate_map_segments.executor": "Run",
+    "Python.generate_map_trajectories.executor": "Run",
     "Python.hybrid_a_star_planner.executor": "Run",
     "Python.main.executor": "Run",
     "Python.main_pipeline.executor": "Run",
+    "Python.map.executor": "Run",
     "Python.map_viz.executor": "Run",
     "Python.mapper.executor": "Run",
     "Python.matplotlib_viz.executor": "Run",
@@ -71,11 +85,15 @@
     "Python.postprocess_path.executor": "Run",
     "Python.roboviz_slam_demo.executor": "Run",
     "Python.roboviz_slam_viz.executor": "Run",
+    "Python.run_slam_roboviz.executor": "Run",
     "Python.settings.executor": "Run",
+    "Python.sim_explore_slam.executor": "Run",
     "Python.simple_animation_demo.executor": "Run",
     "Python.simple_exploration_demo.executor": "Run",
     "Python.simple_test.executor": "Run",
+    "Python.simulate_exploration.executor": "Run",
     "Python.slam_demo.executor": "Run",
+    "Python.test1.executor": "Run",
     "Python.visualize_dwa_path.executor": "Run",
     "Python.visualize_path.executor": "Run",
     "Python.web_viz.executor": "Run",
@@ -83,9 +101,15 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
+    "last_opened_file_path": "D:/PycharmProjects/PythonProject1",
     "settings.editor.selected.configurable": "vcs.Git"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\PycharmProjects\PythonProject1" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

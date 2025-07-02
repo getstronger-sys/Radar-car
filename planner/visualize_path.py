@@ -7,8 +7,6 @@
 - 可达区域可视化
 - 路径平滑和验证
 
-作者: AI Assistant
-日期: 2024
 """
 
 import numpy as np
@@ -552,26 +550,25 @@ def main():
     
     # 可视化结果
     print("\n📊 可视化结果")
-    if main_path:
-        print(f"   主路径长度: {len(main_path)} 个点")
-        
-        # 1. 使用主路径规划结果进行可视化（包含原始路径和平滑路径）
+    # 判断主路径是否有效（点数大于1）
+    valid_main_path = main_path and len(main_path) > 1
+    path_to_show = main_path if valid_main_path else (simple_path if simple_path and len(simple_path) > 1 else None)
+    if path_to_show:
+        print(f"   {'主路径' if valid_main_path else 'simple_path'}长度: {len(path_to_show)} 个点")
+        # 1. 使用主路径或simple_path进行可视化
         print("   1️⃣ 显示原始路径图...")
-        plot_map(grid_map, start, goal, path=main_path)
-        
-        # 2. 生成真正避障的平滑路径进行对比
+        plot_map(grid_map, start, goal, path=path_to_show)
+        # 2. 生成带障碍物约束的平滑路径进行对比
         print("\n🔄 生成带障碍物约束的平滑路径...")
         try:
             from planner.path_planner import smooth_path_with_obstacle_avoidance
-            original_path_for_smoothing = simple_path if simple_path else main_path
+            original_path_for_smoothing = path_to_show
             smoothed_path = smooth_path_with_obstacle_avoidance(
                 original_path_for_smoothing, grid_map, resolution, initial_smoothing=0.2, min_smoothing=0.01, max_iter=20, verbose=True)
             if smoothed_path and len(smoothed_path) > 2 and smoothed_path != original_path_for_smoothing:
                 print(f"   避障平滑路径生成成功: {len(smoothed_path)} 个点")
-                # 3. 显示原始路径和平滑路径的对比图
                 print("   2️⃣ 显示路径对比图...")
                 plot_smoothed_path_comparison(grid_map, start, goal, original_path_for_smoothing, smoothed_path)
-                # 4. 单独显示平滑路径
                 print("   3️⃣ 单独显示平滑路径...")
                 plot_smoothed_path_only(grid_map, start, goal, smoothed_path)
             else:
@@ -580,19 +577,12 @@ def main():
             print(f"   ⚠️  避障平滑路径生成错误: {e}")
             import traceback
             traceback.print_exc()
-        
-        # 5. 可视化起点可达区域
         print("\n🔍 显示起点可达区域...")
         plot_reachable_area(grid_map, start, resolution)
-        
-        # 6. 显示终点周围环境
         print_goal_environment(grid_map, goal, resolution)
     else:
         print("❌ 没有找到有效路径，无法可视化")
-        
-        # 即使没有路径，也显示可达区域
         plot_reachable_area(grid_map, start, resolution)
-    
     print("\n✅ 路径规划测试完成")
 
 
