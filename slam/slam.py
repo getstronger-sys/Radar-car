@@ -11,6 +11,10 @@ import heapq
 from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, \
     detect_frontiers
 from matplotlib.patches import Circle
+import matplotlib
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 支持中文
+matplotlib.rcParams['axes.unicode_minus'] = False
+matplotlib.rcParams['toolbar'] = 'None'
 
 
 class CarSLAM:
@@ -21,10 +25,10 @@ class CarSLAM:
         # 初始化SLAM对象
         self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)
         self.mapbytes = bytearray(map_size_pixels * map_size_pixels)
-        # 初始化可视化工具
-        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'Car SLAM Visualization')
         # 新增：保存障碍物地图
         self.grid_map = grid_map
+        self.map_size_pixels = map_size_pixels
+        self.map_size_meters = map_size_meters
 
     def update_position(self, lidar_scan, pose_change, x, y, theta):
         # 假设lidar_scan是当前激光雷达扫描数据（列表形式）
@@ -34,8 +38,6 @@ class CarSLAM:
         x_mm, y_mm, theta_degrees = self.slam.getpos()
         # 更新地图
         self.slam.getmap(self.mapbytes)
-        # 显示地图和当前位置（转换为米）
-        self.viz.display(x_mm / 1000, y_mm / 1000, theta_degrees, self.mapbytes)
         return x_mm, y_mm, theta_degrees
 
     def simulate_straight_line(self, distance_mm=8000, step_mm=100):
@@ -269,7 +271,7 @@ if __name__ == '__main__':
         MAP_PIXELS = int(MAP_PIXELS + 2 * (PADDING / MAP_RESOLUTION))
         slam = CarSLAM(map_size_pixels=MAP_PIXELS, map_size_meters=MAP_METERS, grid_map=true_map)
         plt.ion()
-        fig, ax = plt.subplots(figsize=(8, 8))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 7))
         # 先用起点位置做一次激光扫描，更新已知地图
         scan_mm = generate_lidar_scan_from_gridmap(
             robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
@@ -312,13 +314,33 @@ if __name__ == '__main__':
                 print(
                     f"robot_pos={robot_pos}, robot格子={world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)}, known_map值={known_map[world_to_grid(robot_pos[1], robot_pos[0], MAP_RESOLUTION)]}")
                 # 可视化known_map，标出robot和target
-                plt.imshow(known_map, cmap='Blues', origin='lower')
-                plt.plot(gx, gy, 'rx', label='target')
-                rx, ry = world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)
-                plt.plot(rx, ry, 'go', label='robot')
-                plt.legend()
-                plt.title('A*失败时的已知地图')
-                plt.show()
+                ax1.clear()
+                # 地图静止显示，origin='lower'
+                ax1.imshow(true_map, cmap='gray_r', alpha=0.3, origin='lower')
+                show_map = known_map.copy()
+                show_map[show_map == -1] = 0.5
+                ax1.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
+                # 轨迹和小车位置用世界坐标
+                ax1.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
+                ax1.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
+                if target is not None:
+                    ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
+                    ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y', markersize=18)
+                ax1.set_xlim(0, MAP_SIZE)
+                ax1.set_ylim(0, MAP_SIZE)
+                circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION), radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+                ax1.add_patch(circle)
+                ax1.set_title('真实地图/轨迹/目标/小车')
+                # 右侧：SLAM建图
+                ax2.clear()
+                slam_map = np.array(slam.mapbytes, dtype=np.uint8).reshape(slam.map_size_pixels, slam.map_size_pixels)
+                ax2.imshow(slam_map, cmap='gray', origin='lower')
+                # SLAM估计的位置
+                x_mm, y_mm, theta_deg = slam.slam.getpos()
+                ax2.plot(x_mm / 1000 / slam.map_size_meters * slam.map_size_pixels,
+                         y_mm / 1000 / slam.map_size_meters * slam.map_size_pixels, 'ro', markersize=8)
+                ax2.set_title('SLAM建图与估计位置')
+                plt.pause(0.01)
                 continue
             # === 平滑运动到下一个A*点 ===
             for i in range(1, len(path)):
@@ -348,26 +370,32 @@ if __name__ == '__main__':
                                          np.rad2deg(robot_theta))
                     trajectory.append(robot_pos.copy())
                     # 可视化
-                    ax.clear()
+                    ax1.clear()
                     # 地图静止显示，origin='lower'
-                    ax.imshow(true_map, cmap='gray_r', alpha=0.3, origin='lower')
+                    ax1.imshow(true_map, cmap='gray_r', alpha=0.3, origin='lower')
                     show_map = known_map.copy()
                     show_map[show_map == -1] = 0.5
-                    ax.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
+                    ax1.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
                     # 轨迹和小车位置用世界坐标
-                    ax.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory],
-                            'g.-', linewidth=2)
-                    ax.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
+                    ax1.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
+                    ax1.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
                     if target is not None:
-                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
-                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y',
-                                markersize=18)
-                    ax.set_xlim(0, MAP_SIZE)
-                    ax.set_ylim(0, MAP_SIZE)
-                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION),
-                                    radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
-                    ax.add_patch(circle)
-                    ax.set_title('SLAM Exploration')
+                        ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
+                        ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y', markersize=18)
+                    ax1.set_xlim(0, MAP_SIZE)
+                    ax1.set_ylim(0, MAP_SIZE)
+                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION), radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+                    ax1.add_patch(circle)
+                    ax1.set_title('真实地图/轨迹/目标/小车')
+                    # 右侧：SLAM建图
+                    ax2.clear()
+                    slam_map = np.array(slam.mapbytes, dtype=np.uint8).reshape(slam.map_size_pixels, slam.map_size_pixels)
+                    ax2.imshow(slam_map, cmap='gray', origin='lower')
+                    # SLAM估计的位置
+                    x_mm, y_mm, theta_deg = slam.slam.getpos()
+                    ax2.plot(x_mm / 1000 / slam.map_size_meters * slam.map_size_pixels,
+                             y_mm / 1000 / slam.map_size_meters * slam.map_size_pixels, 'ro', markersize=8)
+                    ax2.set_title('SLAM建图与估计位置')
                     plt.pause(0.01)
                     if abs(dtheta) <= 1e-2 and dist < step_size:
                         break
@@ -375,6 +403,27 @@ if __name__ == '__main__':
                 # 你可以在这里加Graph SLAM节点和边的采样逻辑
         plt.ioff()
         plt.show()
+        # 居中窗口（仅限TkAgg后端）
+        try:
+            if matplotlib.get_backend() == 'TkAgg':
+                plt.draw()
+                fig = plt.gcf()
+                mgr = plt.get_current_fig_manager()
+                # 获取屏幕尺寸
+                import tkinter as tk
+                root = tk.Tk()
+                screen_w = root.winfo_screenwidth()
+                screen_h = root.winfo_screenheight()
+                root.destroy()
+                # 获取窗口尺寸
+                w, h = fig.get_size_inches() * fig.dpi
+                w, h = int(w), int(h)
+                # 计算居中位置
+                x = (screen_w - w) // 2
+                y = (screen_h - h) // 2
+                mgr.window.wm_geometry(f"{w}x{h}+{x}+{y}")
+        except Exception as e:
+            print('窗口居中失败:', e)
         input('按回车退出...')
     except Exception as e:
         import traceback

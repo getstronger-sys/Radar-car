@@ -1,0 +1,1793 @@
+Index: viz/roboviz_slam_viz.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import numpy as np\r\nimport sys\r\nimport os\r\n\r\n# 添加项目根目录到路径，解决导入问题\r\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\r\n\r\nfrom roboviz import MapVisualizer\r\n\r\n# 导入全局参数\r\nfrom config.settings import MAP_SIZE_M, MAP_RESOLUTION\r\nfrom config.map import MAP_SIZE\r\n\r\nimport matplotlib.patches as mpatches\r\n\r\nclass RoboVizSLAMViewer:\r\n    def __init__(self, title='RoboViz SLAM Viewer', map_size_pixels=None, map_size_meters=None, use_mm=False):\r\n        \"\"\"\r\n        增强版 PyRoboViz SLAM 可视化\r\n        - 支持毫米单位大地图显示\r\n        - 每帧画出激光射线\r\n        - 机器人用三角形表示\r\n        - 坐标轴单位和范围可自定义\r\n        - 新增：前沿点可视化、流畅动画更新\r\n        \"\"\"\r\n        self.use_mm = use_mm\r\n        if use_mm:\r\n            self.map_size_pixels = int(MAP_SIZE_M * 1000) if map_size_pixels is None else map_size_pixels\r\n            self.map_size_meters = MAP_SIZE_M * 1000 if map_size_meters is None else map_size_meters\r\n            self.resolution = 1.0  # 1mm/像素\r\n        else:\r\n            self.map_size_pixels = map_size_pixels or MAP_SIZE\r\n            self.map_size_meters = map_size_meters or MAP_SIZE_M\r\n            self.resolution = MAP_RESOLUTION\r\n        self.title = title\r\n\r\n        self.viz = MapVisualizer(\r\n            map_size_pixels=self.map_size_pixels,\r\n            map_size_meters=self.map_size_meters,\r\n            title=title,\r\n            show_trajectory=False\r\n        )\r\n        \r\n        # 可视化元素\r\n        self.traj_line = None\r\n        self.path_line = None\r\n        self.lidar_points = None\r\n        self.laser_lines = []\r\n        self.robot_patch = None\r\n        self.obstacle_points = None\r\n        self.frontier_points = None  # 新增：前沿点\r\n        self.current_goal = None     # 新增：当前目标点\r\n        self.status_text = None      # 新增：状态文本\r\n        \r\n        # 动画控制\r\n        self.frame_count = 0\r\n        self.last_update_time = 0\r\n        \r\n        # 设置matplotlib为交互模式，提高动画性能\r\n        import matplotlib.pyplot as plt\r\n        plt.ion()\r\n\r\n    def update(self, map_bytes, pose, lidar_scan=None, trajectory=None, nav_path=None, \r\n               frontiers=None, current_goal=None, status_info=None):\r\n        \"\"\"\r\n        更新可视化显示\r\n        \r\n        参数：\r\n        - map_bytes: SLAM地图数据\r\n        - pose: 机器人位姿 [x, y, theta]\r\n        - lidar_scan: 激光扫描数据\r\n        - trajectory: 轨迹点列表\r\n        - nav_path: 导航路径\r\n        - frontiers: 前沿点列表 [(x1, y1), (x2, y2), ...]\r\n        - current_goal: 当前目标点 (x, y)\r\n        - status_info: 状态信息字典\r\n        \"\"\"\r\n        x, y, theta = pose\r\n        theta_deg = np.degrees(theta)\r\n        \r\n        # 单位转换\r\n        if self.use_mm:\r\n            x_mm = x * 1000\r\n            y_mm = y * 1000\r\n        else:\r\n            x_mm = x\r\n            y_mm = y\r\n            \r\n        # 更新SLAM地图\r\n        self.viz.display(x_mm, y_mm, theta_deg, map_bytes)\r\n\r\n        # 清理旧的激光射线\r\n        for line in self.laser_lines:\r\n            try:\r\n                line.remove()\r\n            except Exception:\r\n                pass\r\n        self.laser_lines = []\r\n\r\n        # 绘制激光射线\r\n        if lidar_scan is not None:\r\n            scan_angles = np.linspace(0, 2*np.pi, len(lidar_scan), endpoint=False)\r\n            scan_dist = np.array(lidar_scan)\r\n            if not self.use_mm:\r\n                scan_dist = scan_dist / 1000.0  # 转米\r\n            valid = (scan_dist > 0) & (scan_dist < (4000 if self.use_mm else 4.0))\r\n            scan_angles = scan_angles[valid]\r\n            scan_dist = scan_dist[valid]\r\n            \r\n            for r, a in zip(scan_dist, scan_angles):\r\n                if self.use_mm:\r\n                    end_x = x_mm + r * np.cos(theta + a)\r\n                    end_y = y_mm + r * np.sin(theta + a)\r\n                else:\r\n                    end_x = x + r * np.cos(theta + a)\r\n                    end_y = y + r * np.sin(theta + a)\r\n                # 画射线 - 使用红色，更醒目\r\n                line, = self.viz.ax.plot([x_mm, end_x], [y_mm, end_y], \r\n                                       color='red', linewidth=0.5, alpha=0.6, zorder=2)\r\n                self.laser_lines.append(line)\r\n\r\n        # 更新轨迹\r\n        if self.traj_line:\r\n            self.traj_line.remove()\r\n            self.traj_line = None\r\n        if trajectory and len(trajectory) > 1:\r\n            if self.use_mm:\r\n                traj_x = [p[0]*1000 for p in trajectory]\r\n                traj_y = [p[1]*1000 for p in trajectory]\r\n            else:\r\n                traj_x = [p[0] for p in trajectory]\r\n                traj_y = [p[1] for p in trajectory]\r\n            self.traj_line, = self.viz.ax.plot(traj_x, traj_y, 'blue', \r\n                                             linewidth=1.5, alpha=0.8, zorder=4, \r\n                                             label='Robot Trajectory')\r\n\r\n        # 更新导航路径\r\n        if self.path_line:\r\n            self.path_line.remove()\r\n            self.path_line = None\r\n        if nav_path and len(nav_path) > 1:\r\n            if self.use_mm:\r\n                path_x = [p[0]*1000 for p in nav_path]\r\n                path_y = [p[1]*1000 for p in nav_path]\r\n            else:\r\n                path_x = [p[0] for p in nav_path]\r\n                path_y = [p[1] for p in nav_path]\r\n            self.path_line, = self.viz.ax.plot(path_x, path_y, 'green', \r\n                                             linewidth=2, alpha=0.7, zorder=3, \r\n                                             linestyle='--', label='Navigation Path')\r\n\r\n        # 更新前沿点\r\n        if self.frontier_points:\r\n            self.frontier_points.remove()\r\n            self.frontier_points = None\r\n        if frontiers and len(frontiers) > 0:\r\n            if self.use_mm:\r\n                frontier_x = [f[0]*1000 for f in frontiers]\r\n                frontier_y = [f[1]*1000 for f in frontiers]\r\n            else:\r\n                frontier_x = [f[0] for f in frontiers]\r\n                frontier_y = [f[1] for f in frontiers]\r\n            self.frontier_points = self.viz.ax.scatter(frontier_x, frontier_y, \r\n                                                     c='yellow', s=30, alpha=0.8, \r\n                                                     edgecolors='orange', linewidth=1,\r\n                                                     label='Frontiers', zorder=5)\r\n\r\n        # 更新当前目标点\r\n        if self.current_goal:\r\n            self.current_goal.remove()\r\n            self.current_goal = None\r\n        if current_goal:\r\n            if self.use_mm:\r\n                goal_x = current_goal[0] * 1000\r\n                goal_y = current_goal[1] * 1000\r\n            else:\r\n                goal_x = current_goal[0]\r\n                goal_y = current_goal[1]\r\n            self.current_goal = self.viz.ax.scatter(goal_x, goal_y, \r\n                                                  c='magenta', s=100, alpha=0.9,\r\n                                                  edgecolors='purple', linewidth=2,\r\n                                                  marker='*', label='Current Goal', zorder=6)\r\n\r\n        # 更新机器人三角形\r\n        if self.robot_patch:\r\n            self.robot_patch.remove()\r\n            self.robot_patch = None\r\n        # 机器人三角形参数\r\n        tri_len = 200 if self.use_mm else 0.2  # 20cm\r\n        tri_wid = 100 if self.use_mm else 0.1  # 10cm\r\n        # 机器人朝向三角形顶点\r\n        tip = (x_mm + tri_len * np.cos(theta), y_mm + tri_len * np.sin(theta))\r\n        left = (x_mm + tri_wid * np.cos(theta + 2.5), y_mm + tri_wid * np.sin(theta + 2.5))\r\n        right = (x_mm + tri_wid * np.cos(theta - 2.5), y_mm + tri_wid * np.sin(theta - 2.5))\r\n        triangle = np.array([tip, left, right])\r\n        self.robot_patch = mpatches.Polygon(triangle, color='red', zorder=10)\r\n        self.viz.ax.add_patch(self.robot_patch)\r\n\r\n        # 更新状态文本\r\n        if self.status_text:\r\n            self.status_text.remove()\r\n            self.status_text = None\r\n        if status_info:\r\n            status_str = f\"Frame: {self.frame_count}\\n\"\r\n            for key, value in status_info.items():\r\n                status_str += f\"{key}: {value}\\n\"\r\n            self.status_text = self.viz.ax.text(0.02, 0.98, status_str,\r\n                                              transform=self.viz.ax.transAxes,\r\n                                              verticalalignment='top',\r\n                                              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),\r\n                                              fontsize=8, zorder=20)\r\n\r\n        # 更新图例\r\n        if not self.viz.ax.get_legend():\r\n            self.viz.ax.legend(loc='upper right', fontsize=8)\r\n\r\n        # 更新计数\r\n        self.frame_count += 1\r\n\r\n    def add_obstacle_points(self, obstacle_points):\r\n        \"\"\"\r\n        添加障碍物点可视化\r\n        \r\n        参数：\r\n        - obstacle_points: [(x1, y1), (x2, y2), ...] 障碍物点列表\r\n        \"\"\"\r\n        if self.obstacle_points:\r\n            self.obstacle_points.remove()\r\n            self.obstacle_points = None\r\n        \r\n        if obstacle_points and len(obstacle_points) > 0:\r\n            if self.use_mm:\r\n                obs_x = [p[0]*1000 for p in obstacle_points]\r\n                obs_y = [p[1]*1000 for p in obstacle_points]\r\n            else:\r\n                obs_x = [p[0] for p in obstacle_points]\r\n                obs_y = [p[1] for p in obstacle_points]\r\n            \r\n            self.obstacle_points = self.viz.ax.scatter(obs_x, obs_y, \r\n                                                     c='black', s=20, alpha=0.8,\r\n                                                     label='Obstacles', zorder=1)\r\n\r\n    def save_map(self, filename='roboviz_slam_map.png'):\r\n        \"\"\"\r\n        保存当前地图为图片\r\n        \"\"\"\r\n        try:\r\n            if hasattr(self.viz, 'fig'):\r\n                self.viz.fig.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore\r\n            elif hasattr(self.viz, 'figure'):\r\n                self.viz.figure.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore\r\n            elif hasattr(self.viz, 'ax'):\r\n                self.viz.ax.figure.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore\r\n            else:\r\n                import matplotlib.pyplot as plt\r\n                plt.savefig(filename, dpi=150, bbox_inches='tight')\r\n            print(f\"✅ 地图已保存: {filename}\")\r\n        except Exception as e:\r\n            print(f\"❌ 保存地图失败: {e}\")\r\n\r\n    def close(self):\r\n        \"\"\"\r\n        关闭可视化窗口\r\n        \"\"\"\r\n        try:\r\n            if hasattr(self.viz, 'close'):\r\n                self.viz.close()\r\n            else:\r\n                import matplotlib.pyplot as plt\r\n                plt.close('all')\r\n        except Exception as e:\r\n            print(f\"关闭可视化窗口时出错: {e}\")\r\n\r\n    def show(self):\r\n        \"\"\"\r\n        显示可视化窗口\r\n        \"\"\"\r\n        try:\r\n            if hasattr(self.viz, 'show'):\r\n                self.viz.show()\r\n            else:\r\n                import matplotlib.pyplot as plt\r\n                plt.show()\r\n        except Exception as e:\r\n            print(f\"显示可视化窗口时出错: {e}\")\r\n\r\n    def get_frame_rate(self):\r\n        \"\"\"\r\n        获取当前帧率\r\n        \"\"\"\r\n        import time\r\n        current_time = time.time()\r\n        if self.last_update_time > 0:\r\n            fps = 1.0 / (current_time - self.last_update_time)\r\n        else:\r\n            fps = 0\r\n        self.last_update_time = current_time\r\n        return fps\r\n\r\n\r\ndef test_roboviz_viewer():\r\n    \"\"\"\r\n    测试RoboViz SLAM可视化器\r\n    \"\"\"\r\n    import time\r\n    \r\n    # 创建可视化器\r\n    viewer = RoboVizSLAMViewer(title='Test SLAM Viewer', use_mm=False)\r\n    \r\n    # 模拟数据\r\n    map_bytes = bytearray(MAP_SIZE * MAP_SIZE)\r\n    pose = [MAP_SIZE_M/2, MAP_SIZE_M/2, 0.0]  # 地图中心\r\n    \r\n    # 模拟激光扫描数据\r\n    lidar_scan = [1000 + i * 50 for i in range(360)]\r\n    \r\n    # 模拟轨迹\r\n    trajectory = []\r\n    for i in range(10):\r\n        x = MAP_SIZE_M/2 + i * 0.3\r\n        y = MAP_SIZE_M/2 + i * 0.1\r\n        theta = i * 0.1\r\n        trajectory.append([x, y])\r\n    \r\n    # 模拟前沿点\r\n    frontiers = [[1.0, 1.0], [2.0, 2.0], [3.0, 1.5]]\r\n    \r\n    # 模拟目标点\r\n    current_goal = [MAP_SIZE_M-1, MAP_SIZE_M-1]\r\n    \r\n    # 更新可视化\r\n    viewer.update(map_bytes, pose, lidar_scan, trajectory, None, frontiers, current_goal)\r\n    \r\n    print(\"✅ RoboViz SLAM可视化器测试完成\")\r\n    print(f\"地图尺寸: {MAP_SIZE}x{MAP_SIZE} 像素\")\r\n    print(f\"地图物理尺寸: {MAP_SIZE_M}x{MAP_SIZE_M} 米\")\r\n    print(f\"分辨率: {MAP_RESOLUTION} 米/像素\")\r\n    \r\n    # 保存测试图片\r\n    viewer.save_map('test_slam_map.png')\r\n    \r\n    return viewer\r\n\r\n\r\nif __name__ == \"__main__\":\r\n    # 运行测试\r\n    viewer = test_roboviz_viewer()\r\n    viewer.show() 
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/viz/roboviz_slam_viz.py b/viz/roboviz_slam_viz.py
+--- a/viz/roboviz_slam_viz.py	(revision 298ac29f37e3999bd2e2504354a68a98f8c62904)
++++ b/viz/roboviz_slam_viz.py	(date 1751471882912)
+@@ -1,348 +1,1117 @@
+-import numpy as np
+ import sys
+ import os
+ 
+-# 添加项目根目录到路径，解决导入问题
+-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++# 添加项目根目录到Python路径
++project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.append(project_root)
++
++import numpy as np
++import json
++import math
++from collections import deque
++import matplotlib.pyplot as plt
++import matplotlib.animation as animation
++from matplotlib.patches import Circle, FancyArrow, Rectangle
++from scipy.ndimage import label, binary_dilation
++import time
++import heapq
++from config.map import get_global_map, MAP_RESOLUTION
++from config.settings import START_POSITION
++
++# 添加breezyslam相关导入
++try:
++    from breezyslam.algorithms import RMHC_SLAM
++    from breezyslam.sensors import Laser
++    BREEZYSLAM_AVAILABLE = True
++except ImportError:
++    print("警告: breezyslam库未安装，SLAM功能将不可用")
++    BREEZYSLAM_AVAILABLE = False
++
++# ==================== SLAM类定义 ====================
++class CarSLAM:
++    def __init__(self, map_size_pixels=500, map_size_meters=20):
++        if not BREEZYSLAM_AVAILABLE:
++            self.available = False
++            return
++            
++        self.available = True
++        # 初始化激光模型（适配360个激光束）
++        self.laser = Laser(scan_size=360, scan_rate_hz=10, detection_angle_degrees=360,
++                           distance_no_detection_mm=0, detection_margin=0, offset_mm=0)
++        # 初始化SLAM对象
++        self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)
++        self.mapbytes = bytearray(map_size_pixels * map_size_pixels)
++        self.map_size_pixels = map_size_pixels
++        self.map_size_meters = map_size_meters
++        
++        # 初始化位置估计
++        self.x_mm = START_POSITION['x'] * 1000  # 转换为毫米
++        self.y_mm = START_POSITION['y'] * 1000
++        self.theta_degrees = np.degrees(START_POSITION['theta'])
++
++    def update_position(self, lidar_scan, pose_change):
++        """更新SLAM位置和地图"""
++        if not self.available:
++            return None, None, None
++            
++        # 转换激光数据格式（从米转换为毫米），并处理最大距离情况
++        lidar_scan_mm = []
++        for dist in lidar_scan:
++            if dist >= 4.8:  # 如果距离接近或等于最大探测距离（5米），使用0表示无检测
++                lidar_scan_mm.append(0)
++            else:
++                lidar_scan_mm.append(int(dist * 1000))
++        
++        # 更新SLAM（传入里程计数据）
++        self.slam.update(lidar_scan_mm, pose_change)
++        
++        # 获取更精确的位置
++        self.x_mm, self.y_mm, self.theta_degrees = self.slam.getpos()
++        
++        # 更新地图
++        self.slam.getmap(self.mapbytes)
++        
++        return self.x_mm / 1000, self.y_mm / 1000, np.radians(self.theta_degrees)
++    
++
++
++    def get_map_array(self):
++        """获取地图数组用于显示"""
++        if not self.available:
++            return None
++            
++        # 将字节数组转换为numpy数组
++        map_array = np.array(self.mapbytes, dtype=np.uint8)
++        map_array = map_array.reshape(self.map_size_pixels, self.map_size_pixels)
++        
++        # 转换为0-1范围（0为空白，1为障碍物）
++        map_array = map_array.astype(float) / 255.0
++        
++        return map_array
++
++
++class LidarScan:
++    def __init__(self, ranges, angles, timestamp):
++        self.ranges = ranges
++        self.angles = angles
++        self.timestamp = timestamp
++
++
++class Odometry:
++    def __init__(self, x, y, theta, timestamp):
++        self.x = x
++        self.y = y
++        self.theta = theta
++        self.timestamp = timestamp
++
++
++class Robot:
++    def __init__(self, x, y, theta=0):
++        self.x = x
++        self.y = y
++        self.theta = theta
++        self.max_speed = 0.5
++        self.max_angular_speed = 1.0
++        self.radius = 0.15
++
++    def is_position_safe(self, x, y, occupancy_grid, resolution, safety_margin=0.15):
++        """Check if position is safe (no collision with obstacles)"""
++        margin_cells = int(safety_margin / resolution)
++        gx = int(x / resolution)
++        gy = int(y / resolution)
++
++        for dx in range(-margin_cells, margin_cells + 1):
++            for dy in range(-margin_cells, margin_cells + 1):
++                check_x = gx + dx
++                check_y = gy + dy
+ 
+-from roboviz import MapVisualizer
++                if (check_x < 0 or check_x >= occupancy_grid.shape[1] or
++                        check_y < 0 or check_y >= occupancy_grid.shape[0]):
++                    return False
+ 
+-# 导入全局参数
+-from config.settings import MAP_SIZE_M, MAP_RESOLUTION
+-from config.map import MAP_SIZE
++                if occupancy_grid[check_y, check_x] > 0.5:
++                    return False
+ 
+-import matplotlib.patches as mpatches
++        return True
+ 
+-class RoboVizSLAMViewer:
+-    def __init__(self, title='RoboViz SLAM Viewer', map_size_pixels=None, map_size_meters=None, use_mm=False):
+-        """
+-        增强版 PyRoboViz SLAM 可视化
+-        - 支持毫米单位大地图显示
+-        - 每帧画出激光射线
+-        - 机器人用三角形表示
+-        - 坐标轴单位和范围可自定义
+-        - 新增：前沿点可视化、流畅动画更新
+-        """
+-        self.use_mm = use_mm
+-        if use_mm:
+-            self.map_size_pixels = int(MAP_SIZE_M * 1000) if map_size_pixels is None else map_size_pixels
+-            self.map_size_meters = MAP_SIZE_M * 1000 if map_size_meters is None else map_size_meters
+-            self.resolution = 1.0  # 1mm/像素
++    def move_to_position(self, target_x, target_y, occupancy_grid=None, resolution=None):
++        """Safely move to target position"""
++        if occupancy_grid is not None and resolution is not None:
++            if not self.is_position_safe(target_x, target_y, occupancy_grid, resolution):
++                return False
++
++        if hasattr(self, 'last_x') and hasattr(self, 'last_y'):
++            dx = target_x - self.last_x
++            dy = target_y - self.last_y
++            if abs(dx) > 0.001 or abs(dy) > 0.001:
++                self.theta = math.atan2(dy, dx)
++
++        self.last_x = self.x
++        self.last_y = self.y
++        self.x = target_x
++        self.y = target_y
++        return True
++
++    def normalize_angle(self, angle):
++        """Normalize angle to [-pi, pi]"""
++        while angle > math.pi:
++            angle -= 2 * math.pi
++        while angle < -math.pi:
++            angle += 2 * math.pi
++        return angle
++
++
++class MapConverter:
++    def __init__(self, resolution=0.05):
++        self.resolution = resolution
++
++    def segments_to_occupancy_grid(self, segments, map_size=(16, 16)):
++        """Convert line segments to occupancy grid with boundaries"""
++        width = int(map_size[0] / self.resolution)
++        height = int(map_size[1] / self.resolution)
++
++        grid = np.zeros((height, width), dtype=np.float32)
++        self._add_boundary_walls(grid, map_size)
++
++        for segment in segments:
++            self._draw_line(grid, segment['start'], segment['end'])
++
++        return grid
++
++    def _add_boundary_walls(self, grid, map_size):
++        """Add boundary walls around the map"""
++        height, width = grid.shape
++        grid[0, :] = 1.0  # Top boundary
++        grid[height - 1, :] = 1.0  # Bottom boundary
++        grid[:, 0] = 1.0  # Left boundary
++        grid[:, width - 1] = 1.0  # Right boundary
++
++    def _draw_line(self, grid, start, end):
++        """Draw a line on the grid using Bresenham's algorithm"""
++        x0 = int(start[0] / self.resolution)
++        y0 = int(start[1] / self.resolution)
++        x1 = int(end[0] / self.resolution)
++        y1 = int(end[1] / self.resolution)
++
++        points = self._bresenham_line(x0, y0, x1, y1)
++
++        for x, y in points:
++            if 0 <= x < grid.shape[1] and 0 <= y < grid.shape[0]:
++                grid[y, x] = 1.0
++
++    def _bresenham_line(self, x0, y0, x1, y1):
++        """Bresenham's line algorithm"""
++        points = []
++        dx = abs(x1 - x0)
++        dy = abs(y1 - y0)
++        x, y = x0, y0
++        n = 1 + dx + dy
++        x_inc = 1 if x1 > x0 else -1
++        y_inc = 1 if y1 > y0 else -1
++        error = dx - dy
++
++        dx *= 2
++        dy *= 2
++
++        for _ in range(n):
++            points.append((x, y))
++
++            if error > 0:
++                x += x_inc
++                error -= dy
++            else:
++                y += y_inc
++                error += dx
++
++        return points
++
++
++class LidarSimulator:
++    def __init__(self, range_max=5.0, num_beams=360, angle_res=1):
++        self.range_max = range_max
++        self.num_beams = num_beams
++        self.angle_res = angle_res
++        self.angles = np.linspace(0, 2 * np.pi, num_beams, endpoint=False)
++
++    def scan(self, robot_pos, occupancy_grid, resolution):
++        """Simulate lidar scan"""
++        ranges = []
++        robot_x, robot_y, robot_theta = robot_pos
++
++        for angle in self.angles:
++            global_angle = robot_theta + angle
++            range_val = self._cast_ray_fast(
++                robot_x, robot_y, global_angle,
++                occupancy_grid, resolution
++            )
++            ranges.append(range_val)
++
++        return LidarScan(ranges, self.angles.tolist(), 0)
++
++    def _cast_ray_fast(self, start_x, start_y, angle, grid, resolution):
++        """Fast ray casting"""
++        step_size = resolution * 0.5
++        max_steps = int(self.range_max / step_size)
++
++        cos_a = math.cos(angle)
++        sin_a = math.sin(angle)
++
++        for step in range(max_steps):
++            x = start_x + step * step_size * cos_a
++            y = start_y + step * step_size * sin_a
++
++            gx = int(x / resolution)
++            gy = int(y / resolution)
++
++            if (gx < 0 or gx >= grid.shape[1] or
++                    gy < 0 or gy >= grid.shape[0]):
++                return step * step_size
++
++            if grid[gy, gx] > 0.5:
++                return step * step_size
++
++        return self.range_max
++
++
++def detect_frontiers_optimized(occupancy_grid, unknown_val=-1, free_threshold=0.2, map_resolution=0.01):
++    """Optimized frontier detection function"""
++    h, w = occupancy_grid.shape
++
++    free_mask = (occupancy_grid >= 0) & (occupancy_grid < free_threshold)
++    unknown_mask = (occupancy_grid == unknown_val)
++
++    dilated_unknown = binary_dilation(unknown_mask, structure=np.ones((3, 3)))
++    frontiers_mask = free_mask & dilated_unknown
++    labeled, num_features = label(frontiers_mask)
++
++    frontiers_world = []
++
++    for i in range(1, num_features + 1):
++        ys, xs = np.where(labeled == i)
++
++        if len(xs) > 3:
++            cx = int(np.mean(xs))
++            cy = int(np.mean(ys))
++            x_m = cx * map_resolution
++            y_m = cy * map_resolution
++            frontiers_world.append((x_m, y_m))
++
++    return frontiers_world
++
++
++def select_best_frontier(frontiers, robot_pos, occupancy_grid, map_resolution, path_planner=None):
++    """Select best frontier based on path distance"""
++    if not frontiers:
++        return None
++
++    distances = []
++    valid_frontiers = []
++
++    for frontier in frontiers:
++        if path_planner:
++            path = path_planner.plan(robot_pos, frontier, occupancy_grid)
++            if path:
++                path_length = 0
++                for i in range(1, len(path)):
++                    dx = path[i][0] - path[i - 1][0]
++                    dy = path[i][1] - path[i - 1][1]
++                    path_length += np.hypot(dx, dy)
++                distances.append(path_length)
++                valid_frontiers.append(frontier)
++            else:
++                distances.append(float('inf'))
++                valid_frontiers.append(frontier)
+         else:
+-            self.map_size_pixels = map_size_pixels or MAP_SIZE
+-            self.map_size_meters = map_size_meters or MAP_SIZE_M
+-            self.resolution = MAP_RESOLUTION
+-        self.title = title
++            distance = np.hypot(frontier[0] - robot_pos[0], frontier[1] - robot_pos[1])
++            distances.append(distance)
++            valid_frontiers.append(frontier)
++
++    if not valid_frontiers:
++        return None
++
++    min_index = np.argmin(distances)
++    return valid_frontiers[min_index]
++
++
++def world_to_grid(x, y, resolution):
++    """Convert world coordinates to grid coordinates"""
++    return int(x / resolution), int(y / resolution)
++
++
++def grid_to_world(gx, gy, resolution):
++    """Convert grid coordinates to world coordinates"""
++    return (gx + 0.5) * resolution, (gy + 0.5) * resolution
++
++
++class AStarPathPlanner:
++    """A* path planning algorithm with safety margins"""
++
++    def __init__(self, resolution, safety_margin=0.15):
++        self.resolution = resolution
++        self.safety_margin = safety_margin
++
++    def is_valid_position(self, gx, gy, occupancy_grid):
++        """Check if position is valid with safety margin"""
++        margin_cells = int(self.safety_margin / self.resolution)
++
++        for dx in range(-margin_cells, margin_cells + 1):
++            for dy in range(-margin_cells, margin_cells + 1):
++                check_x = gx + dx
++                check_y = gy + dy
++
++                if (check_x < 0 or check_x >= occupancy_grid.shape[1] or
++                        check_y < 0 or check_y >= occupancy_grid.shape[0]):
++                    return False
++
++                if occupancy_grid[check_y, check_x] > 0.5:
++                    return False
++
++        return True
++
++    def plan(self, start, goal, occupancy_grid):
++        """Plan path from start to goal using A*"""
++        sx, sy = world_to_grid(start[0], start[1], self.resolution)
++        gx, gy = world_to_grid(goal[0], goal[1], self.resolution)
++
++        if not self.is_valid_position(sx, sy, occupancy_grid):
++            return None
++        if not self.is_valid_position(gx, gy, occupancy_grid):
++            return None
++
++        open_set = []
++        heapq.heappush(open_set, (0, (sx, sy)))
++        came_from = {}
++        g_score = {(sx, sy): 0}
++
++        directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
++
++        while open_set:
++            _, current = heapq.heappop(open_set)
++
++            if current == (gx, gy):
++                path = [current]
++                while current in came_from:
++                    current = came_from[current]
++                    path.append(current)
++                path.reverse()
++
++                world_path = []
++                for x, y in path:
++                    wx, wy = grid_to_world(x, y, self.resolution)
++                    world_path.append((wx, wy))
++                return world_path
++
++            for dx, dy in directions:
++                nx, ny = current[0] + dx, current[1] + dy
++
++                if self.is_valid_position(nx, ny, occupancy_grid):
++                    tentative_g = g_score[current] + np.hypot(dx, dy)
++
++                    if (nx, ny) not in g_score or tentative_g < g_score[(nx, ny)]:
++                        g_score[(nx, ny)] = tentative_g
++                        f_score = tentative_g + np.hypot(gx - nx, gy - ny)
++                        heapq.heappush(open_set, (f_score, (nx, ny)))
++                        came_from[(nx, ny)] = current
++
++        return None
++
++
++class SimplifiedFrontierExplorer:
++    def __init__(self, enable_visualization=True):
++        # 直接用全局地图和分辨率
++        self.resolution = MAP_RESOLUTION
++        self.true_map = get_global_map()
++
++        # SLAM map 初始化为未知
++        self.slam_map = np.full_like(self.true_map, -1, dtype=np.float32)
+ 
+-        self.viz = MapVisualizer(
+-            map_size_pixels=self.map_size_pixels,
+-            map_size_meters=self.map_size_meters,
+-            title=title,
+-            show_trajectory=False
+-        )
++        # 机器人起点
++        start_pos = [START_POSITION['x'], START_POSITION['y']]
++        self.robot = Robot(start_pos[0], start_pos[1], 0)
++
++        # 其它初始化保持不变
++        self.lidar_data = []
++        self.odometry_data = []
++        self.robot_path = []
++        self.timestamp = 0
++        self.exploration_complete = False
++        self.current_target = None
++        self.frontiers = []
++        self.current_scan_points = []
++        self.enable_visualization = enable_visualization
++        self.map_converter = MapConverter(self.resolution)
++        self.lidar_sim = LidarSimulator(range_max=5.0, num_beams=360)
++        self.path_planner = AStarPathPlanner(self.resolution, safety_margin=0.15)
+         
+-        # 可视化元素
+-        self.traj_line = None
+-        self.path_line = None
+-        self.lidar_points = None
+-        self.laser_lines = []
+-        self.robot_patch = None
+-        self.obstacle_points = None
+-        self.frontier_points = None  # 新增：前沿点
+-        self.current_goal = None     # 新增：当前目标点
+-        self.status_text = None      # 新增：状态文本
++        # 初始化SLAM系统
++        self.slam_system = CarSLAM(map_size_pixels=500, map_size_meters=20)
++        self.slam_map_breezy = None
++        self.slam_pos = None
+         
+-        # 动画控制
+-        self.frame_count = 0
+-        self.last_update_time = 0
++        # 记录上一时刻的位置和时间，用于计算微分
++        self.prev_robot_pos = np.array([self.robot.x, self.robot.y])
++        self.prev_robot_theta = self.robot.theta
++        self.prev_time = 0.0
++        self.dt = 100000.0  # 时间步长（微秒）
+         
+-        # 设置matplotlib为交互模式，提高动画性能
+-        import matplotlib.pyplot as plt
++        if self.enable_visualization:
++            self.setup_visualization()
++
++    def setup_visualization(self):
++        """Setup visualization with three windows"""
++        plt.style.use('dark_background')
+         plt.ion()
+ 
+-    def update(self, map_bytes, pose, lidar_scan=None, trajectory=None, nav_path=None, 
+-               frontiers=None, current_goal=None, status_info=None):
+-        """
+-        更新可视化显示
+-        
+-        参数：
+-        - map_bytes: SLAM地图数据
+-        - pose: 机器人位姿 [x, y, theta]
+-        - lidar_scan: 激光扫描数据
+-        - trajectory: 轨迹点列表
+-        - nav_path: 导航路径
+-        - frontiers: 前沿点列表 [(x1, y1), (x2, y2), ...]
+-        - current_goal: 当前目标点 (x, y)
+-        - status_info: 状态信息字典
+-        """
+-        x, y, theta = pose
+-        theta_deg = np.degrees(theta)
+-        
+-        # 单位转换
+-        if self.use_mm:
+-            x_mm = x * 1000
+-            y_mm = y * 1000
+-        else:
+-            x_mm = x
+-            y_mm = y
++        self.fig = plt.figure(figsize=(20, 12))
++        self.fig.patch.set_facecolor('#1e1e1e')
++
++        # Create custom grid layout - 2x3 for three maps + status
++        gs = self.fig.add_gridspec(2, 3, height_ratios=[3, 1], width_ratios=[1, 1, 1],
++                                   hspace=0.3, wspace=0.3)
++
++        # Main map displays - three windows
++        self.ax1 = self.fig.add_subplot(gs[0, 0])  # Ground Truth
++        self.ax2 = self.fig.add_subplot(gs[0, 1])  # SLAM Mapping
++        self.ax3 = self.fig.add_subplot(gs[0, 2])  # BreezySLAM Map
++
++        # Status panel spans all three columns
++        self.ax_status = self.fig.add_subplot(gs[1, :])
++        self.ax_status.axis('off')
++
++        # Set titles with modern styling
++        title_style = {'fontsize': 16, 'fontweight': 'bold', 'color': '#00ff88', 'pad': 20}
++        self.ax1.set_title('🌍 Ground Truth Environment', **title_style)
++        self.ax2.set_title('🗺️ SLAM Mapping & Exploration', **title_style)
++        self.ax3.set_title('🤖 BreezySLAM Real-time Map', **title_style)
++
++        # Set background colors
++        for ax in [self.ax1, self.ax2, self.ax3]:
++            ax.set_facecolor('#2a2a2a')
++            ax.grid(True, alpha=0.3, color='#666666', linewidth=0.5)
++            ax.set_xlabel('X Position (m)', color='#cccccc', fontsize=12)
++            ax.set_ylabel('Y Position (m)', color='#cccccc', fontsize=12)
++
++        # Initialize map images with custom colormaps
++        self.true_map_img = self.ax1.imshow(self.true_map, cmap='binary', origin='lower', alpha=0.8)
++
++        # Custom colormap for SLAM map
++        slam_cmap = plt.get_cmap('RdYlGn_r')
++        self.slam_map_img = self.ax2.imshow(self.slam_map, cmap=slam_cmap, origin='lower',
++                                            vmin=-1, vmax=1, alpha=0.9)
++
++        # Initialize BreezySLAM map (black and white)
++        self.breezy_map_img = self.ax3.imshow(np.zeros((500, 500)), cmap='gray', origin='lower',
++                                              vmin=0, vmax=1, alpha=0.9)
++
++        # Robot visualization with enhanced styling
++        robot_color = '#ff4444'
++        robot_radius_grid = self.robot.radius / self.resolution
++        self.robot_true = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
++                                 edgecolor='white', zorder=10)
++        self.robot_slam = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
++                                 edgecolor='white', zorder=10)
++        self.robot_breezy = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
++                                   edgecolor='white', zorder=10)
++
++        self.ax1.add_patch(self.robot_true)
++        self.ax2.add_patch(self.robot_slam)
++        self.ax3.add_patch(self.robot_breezy)
++
++        # Enhanced path visualization
++        self.path_line_true, = self.ax1.plot([], [], color='#00aaff', linewidth=3,
++                                             alpha=0.8, label='Robot Path', zorder=5)
++        self.path_line_slam, = self.ax2.plot([], [], color='#00aaff', linewidth=3,
++                                             alpha=0.8, label='Robot Path', zorder=5)
++        self.path_line_breezy, = self.ax3.plot([], [], color='#00aaff', linewidth=3,
++                                               alpha=0.8, label='Robot Path', zorder=5)
++
++        # Frontier and target visualization (only on SLAM map)
++        self.frontier_points, = self.ax2.plot([], [], 'o', color='#00ff88', markersize=10,
++                                              alpha=0.9, label='Frontier Points', zorder=8)
++
++        self.target_point, = self.ax2.plot([], [], '*', color='#ffff00', markersize=8,
++                                           label='Current Target', zorder=9)
++
++        # Planned path visualization (only on SLAM map)
++        self.planned_path, = self.ax2.plot([], [], '--', color='#ff8800', linewidth=4,
++                                           alpha=0.8, label='Planned Path', zorder=7)
++
++        # LiDAR scan visualization (only on ground truth)
++        self.scan_points, = self.ax1.plot([], [], '.', color='#ffff44', markersize=2,
++                                          alpha=0.8, label='LiDAR Scan', zorder=3)
++
++        # Enhanced legends
++        legend_style = {'fancybox': True, 'framealpha': 0.9, 'facecolor': '#2a2a2a',
++                        'edgecolor': '#666666', 'fontsize': 10}
++        self.ax1.legend(loc='upper right', **legend_style)
++        self.ax2.legend(loc='upper right', **legend_style)
++        self.ax3.legend(loc='upper right', **legend_style)
++
++        # Set axis limits and styling
++        for ax in [self.ax1, self.ax2]:
++            ax.set_xlim(0, self.true_map.shape[1])
++            ax.set_ylim(0, self.true_map.shape[0])
++            ax.tick_params(colors='#cccccc', labelsize=10)
++        
++        # Set axis limits for BreezySLAM map
++        self.ax3.set_xlim(0, 500)
++        self.ax3.set_ylim(0, 500)
++        self.ax3.tick_params(colors='#cccccc', labelsize=10)
++
++        # Initialize arrow placeholders
++        self.robot_arrow_true = None
++        self.robot_arrow_slam = None
++        self.robot_arrow_breezy = None
++
++        # Status display setup
++        self.setup_status_display()
++
++    def setup_status_display(self):
++        """Setup enhanced status display panel"""
++        # Create status text areas
++        self.status_texts = {}
++
++        # Main status line
++        self.main_status = self.ax_status.text(0.5, 0.8, '', ha='center', va='center',
++                                               fontsize=18, fontweight='bold', color='#00ff88',
++                                               transform=self.ax_status.transAxes)
++
++        # Statistics grid
++        stats_x_positions = [0.1, 0.3, 0.5, 0.7, 0.9]
++        stats_labels = ['Steps', 'Position', 'Frontiers', 'Unknown', 'Time']
++        self.stats_labels = []
++        self.stats_values = []
++
++        for i, (x_pos, label) in enumerate(zip(stats_x_positions, stats_labels)):
++            # Label
++            label_text = self.ax_status.text(x_pos, 0.5, label, ha='center', va='top',
++                                             fontsize=12, fontweight='bold', color='#cccccc',
++                                             transform=self.ax_status.transAxes)
++            self.stats_labels.append(label_text)
++
++            # Value
++            value_text = self.ax_status.text(x_pos, 0.2, '---', ha='center', va='top',
++                                             fontsize=14, fontweight='bold', color='#ffffff',
++                                             transform=self.ax_status.transAxes)
++            self.stats_values.append(value_text)
++
++        # Progress bar background
++        self.progress_bg = Rectangle((0.05, 0.05), 0.9, 0.1, transform=self.ax_status.transAxes,
++                                     facecolor='#444444', edgecolor='#666666', linewidth=1)
++        self.ax_status.add_patch(self.progress_bg)
++
++        # Progress bar
++        self.progress_bar = Rectangle((0.05, 0.05), 0.0, 0.1, transform=self.ax_status.transAxes,
++                                      facecolor='#00ff88', alpha=0.8)
++        self.ax_status.add_patch(self.progress_bar)
++
++    def update_slam_map(self, lidar_scan):
++        """Update SLAM map with lidar data"""
++        self.current_scan_points = []
++
++        for i, (angle, range_val) in enumerate(zip(lidar_scan.angles, lidar_scan.ranges)):
++            global_angle = self.robot.theta + angle
++            end_x = self.robot.x + range_val * math.cos(global_angle)
++            end_y = self.robot.y + range_val * math.sin(global_angle)
++
++            self.current_scan_points.extend([end_x / self.resolution, end_y / self.resolution])
++            self._update_ray_fast(self.robot.x, self.robot.y, end_x, end_y)
++
++            if range_val < self.lidar_sim.range_max - 0.1:
++                gx = int(end_x / self.resolution)
++                gy = int(end_y / self.resolution)
++                if (0 <= gx < self.slam_map.shape[1] and
++                        0 <= gy < self.slam_map.shape[0]):
++                    self.slam_map[gy, gx] = 1.0
++
++    def _update_ray_fast(self, start_x, start_y, end_x, end_y):
++        """Fast ray update using simplified line drawing"""
++        distance = np.hypot(end_x - start_x, end_y - start_y)
++        num_samples = int(distance / self.resolution) + 1
++
++        # 确保 num_samples 至少为1
++        if num_samples < 1:
++            num_samples = 1
++
++        for i in range(num_samples):
++            ratio = i / max(num_samples - 1, 1)
++            x = start_x + ratio * (end_x - start_x)
++            y = start_y + ratio * (end_y - start_y)
++
++            gx = int(x / self.resolution)
++            gy = int(y / self.resolution)
++
++            if (0 <= gx < self.slam_map.shape[1] and
++                    0 <= gy < self.slam_map.shape[0] and
++                    self.slam_map[gy, gx] == -1):
++                self.slam_map[gy, gx] = 0.0
++
++    def get_next_frontier(self):
++        """Get next frontier target"""
++        self.frontiers = detect_frontiers_optimized(
++            self.slam_map,
++            map_resolution=self.resolution
++        )
++
++        if not self.frontiers:
++            return None
++
++        robot_pos = (self.robot.x, self.robot.y)
++        return select_best_frontier(self.frontiers, robot_pos, self.slam_map,
++                                    self.resolution, self.path_planner)
++
++    def find_nearest_unknown_area(self):
++        """Find the nearest unknown area when no frontiers are available"""
++        unknown_y, unknown_x = np.where(self.slam_map == -1)
++
++        if len(unknown_x) == 0:
++            return None
++
++        robot_x_grid = self.robot.x / self.resolution
++        robot_y_grid = self.robot.y / self.resolution
++
++        distances = np.sqrt((unknown_x - robot_x_grid) ** 2 + (unknown_y - robot_y_grid) ** 2)
++
++        nearest_idx = np.argmin(distances)
++        nearest_x = unknown_x[nearest_idx]
++        nearest_y = unknown_y[nearest_idx]
++
++        world_x = nearest_x * self.resolution
++        world_y = nearest_y * self.resolution
++
++        return (world_x, world_y)
++
++    def navigate_to_target(self, target):
++        """Navigate robot to target using separated rotation and translation"""
++        if target is None:
++            return False
++
++        # 计算到目标的方向和距离
++        dx = target[0] - self.robot.x
++        dy = target[1] - self.robot.y
++        distance_to_target = np.hypot(dx, dy)
++        
++        # 如果已经足够接近目标，返回成功
++        if distance_to_target < self.resolution * 2:
++            return True
++        
++        # 计算目标角度
++        target_angle = math.atan2(dy, dx)
++        
++        # 计算当前朝向与目标方向的夹角
++        angle_diff = target_angle - self.robot.theta
++        # 归一化角度到[-π, π]
++        while angle_diff > math.pi:
++            angle_diff -= 2 * math.pi
++        while angle_diff < -math.pi:
++            angle_diff += 2 * math.pi
++        
++        # 判断是否需要旋转或前进
++        angle_threshold = 0.1  # 角度阈值（弧度）
++        min_distance_threshold = 0.05  # 最小前进距离阈值（米）
++        
++        if abs(angle_diff) > angle_threshold:
++            # 只旋转，不前进
++            rotation_step = 0.1  # 每次旋转的步长（弧度）
++            if angle_diff > 0:
++                self.robot.theta += rotation_step
++            else:
++                self.robot.theta -= rotation_step
+             
+-        # 更新SLAM地图
+-        self.viz.display(x_mm, y_mm, theta_deg, map_bytes)
+-
+-        # 清理旧的激光射线
+-        for line in self.laser_lines:
+-            try:
+-                line.remove()
+-            except Exception:
+-                pass
+-        self.laser_lines = []
+-
+-        # 绘制激光射线
+-        if lidar_scan is not None:
+-            scan_angles = np.linspace(0, 2*np.pi, len(lidar_scan), endpoint=False)
+-            scan_dist = np.array(lidar_scan)
+-            if not self.use_mm:
+-                scan_dist = scan_dist / 1000.0  # 转米
+-            valid = (scan_dist > 0) & (scan_dist < (4000 if self.use_mm else 4.0))
+-            scan_angles = scan_angles[valid]
+-            scan_dist = scan_dist[valid]
++            # 归一化角度
++            self.robot.theta = self.robot.normalize_angle(self.robot.theta)
++            
++        elif distance_to_target > min_distance_threshold:
++            # 只前进，不旋转
++            # 计算前进步长
++            forward_step = min(0.1, distance_to_target)  # 每次前进的步长（米）
++            
++            # 计算新位置
++            new_x = self.robot.x + forward_step * math.cos(self.robot.theta)
++            new_y = self.robot.y + forward_step * math.sin(self.robot.theta)
+             
+-            for r, a in zip(scan_dist, scan_angles):
+-                if self.use_mm:
+-                    end_x = x_mm + r * np.cos(theta + a)
+-                    end_y = y_mm + r * np.sin(theta + a)
+-                else:
+-                    end_x = x + r * np.cos(theta + a)
+-                    end_y = y + r * np.sin(theta + a)
+-                # 画射线 - 使用红色，更醒目
+-                line, = self.viz.ax.plot([x_mm, end_x], [y_mm, end_y], 
+-                                       color='red', linewidth=0.5, alpha=0.6, zorder=2)
+-                self.laser_lines.append(line)
++            # 检查新位置是否安全
++            if self.robot.is_position_safe(new_x, new_y, self.slam_map, self.resolution):
++                self.robot.x = new_x
++                self.robot.y = new_y
++            else:
++                # 如果前进不安全，尝试旋转
++                rotation_step = 0.1
++                self.robot.theta += rotation_step
++                self.robot.theta = self.robot.normalize_angle(self.robot.theta)
++        
++        return False
++
++    def update_visualization(self):
++        """Update visualization elements"""
++        if not self.enable_visualization:
++            return
++
++        # Update robot positions
++        robot_x_grid = self.robot.x / self.resolution
++        robot_y_grid = self.robot.y / self.resolution
+ 
+-        # 更新轨迹
+-        if self.traj_line:
+-            self.traj_line.remove()
+-            self.traj_line = None
+-        if trajectory and len(trajectory) > 1:
+-            if self.use_mm:
+-                traj_x = [p[0]*1000 for p in trajectory]
+-                traj_y = [p[1]*1000 for p in trajectory]
+-            else:
+-                traj_x = [p[0] for p in trajectory]
+-                traj_y = [p[1] for p in trajectory]
+-            self.traj_line, = self.viz.ax.plot(traj_x, traj_y, 'blue', 
+-                                             linewidth=1.5, alpha=0.8, zorder=4, 
+-                                             label='Robot Trajectory')
++        self.robot_true.center = (robot_x_grid, robot_y_grid)
++        self.robot_slam.center = (robot_x_grid, robot_y_grid)
++
++        # Update robot direction arrows
++        self._update_robot_arrows(robot_x_grid, robot_y_grid)
++
++        # Update paths
++        if len(self.robot_path) > 1:
++            path_x = [p[0] / self.resolution for p in self.robot_path]
++            path_y = [p[1] / self.resolution for p in self.robot_path]
++
++            self.path_line_true.set_data(path_x, path_y)
++            self.path_line_slam.set_data(path_x, path_y)
++
++        # Update SLAM map
++        slam_display = self.slam_map.copy()
++        slam_display[slam_display == -1] = 0.5  # Unknown as neutral
++        self.slam_map_img.set_array(slam_display)
++        
++        # Update BreezySLAM map and robot position
++        if self.slam_map_breezy is not None:
++            self.breezy_map_img.set_array(self.slam_map_breezy)
++            
++            # Update BreezySLAM robot position
++            if self.slam_pos is not None:
++                # 将SLAM位置转换为像素坐标
++                slam_x_pixels = int(self.slam_pos[0] * self.slam_map_breezy.shape[1] / 20)
++                slam_y_pixels = int(self.slam_pos[1] * self.slam_map_breezy.shape[0] / 20)
++                self.robot_breezy.center = (slam_x_pixels, slam_y_pixels)
++                
++                # Update BreezySLAM path
++                if len(self.robot_path) > 1:
++                    # 将路径转换为BreezySLAM坐标系
++                    breezy_path_x = []
++                    breezy_path_y = []
++                    for p in self.robot_path:
++                        px_pixels = int(p[0] * self.slam_map_breezy.shape[1] / 20)
++                        py_pixels = int(p[1] * self.slam_map_breezy.shape[0] / 20)
++                        breezy_path_x.append(px_pixels)
++                        breezy_path_y.append(py_pixels)
++                    self.path_line_breezy.set_data(breezy_path_x, breezy_path_y)
++
++        # Update frontiers
++        self._update_frontiers()
++
++        # Update target
++        self._update_target()
++
++        # Update planned path
++        self._update_planned_path()
++
++        # Update LiDAR scan
++        self._update_lidar_scan()
++
++        # Update status display
++        self._update_status_display()
++
++        # Refresh display
++        self.fig.canvas.draw()
++        self.fig.canvas.flush_events()
++
++    def _update_robot_arrows(self, robot_x_grid, robot_y_grid):
++        """Update robot direction arrows"""
++        # Remove old arrows
++        if self.robot_arrow_true:
++            self.robot_arrow_true.remove()
++        if self.robot_arrow_slam:
++            self.robot_arrow_slam.remove()
++        if self.robot_arrow_breezy:
++            self.robot_arrow_breezy.remove()
++
++        # Add new arrows
++        arrow_length = self.robot.radius / self.resolution * 2  # 箭头长度为小车半径的2倍（单位：格）
++        dx = arrow_length * math.cos(self.robot.theta)
++        dy = arrow_length * math.sin(self.robot.theta)
++
++        # 让箭头头部宽度和长度也随箭头长度缩放
++        head_width = arrow_length * 0.5   # 你可以调节这个系数
++        head_length = arrow_length * 0.4  # 你可以调节这个系数
++
++        arrow_style = dict(
++            head_width=head_width,
++            head_length=head_length,
++            fc='#ffffff',
++            ec='#ffffff',
++            linewidth=2.0,
++            alpha=0.9,
++            zorder=15
++        )
++
++        self.robot_arrow_true = FancyArrow(robot_x_grid, robot_y_grid, dx, dy, **arrow_style)
++        self.robot_arrow_slam = FancyArrow(robot_x_grid, robot_y_grid, dx, dy, **arrow_style)
++        
++        # Add BreezySLAM arrow if position is available
++        if self.slam_pos is not None and self.slam_map_breezy is not None:
++            slam_x_pixels = int(self.slam_pos[0] * self.slam_map_breezy.shape[1] / 20)
++            slam_y_pixels = int(self.slam_pos[1] * self.slam_map_breezy.shape[0] / 20)
++            # 在BreezySLAM坐标系中的箭头长度
++            breezy_arrow_length = 20  # 像素单位
++            breezy_dx = breezy_arrow_length * math.cos(self.slam_pos[2])
++            breezy_dy = breezy_arrow_length * math.sin(self.slam_pos[2])
++            
++            breezy_arrow_style = dict(
++                head_width=10,
++                head_length=8,
++                fc='#ffffff',
++                ec='#ffffff',
++                linewidth=2.0,
++                alpha=0.9,
++                zorder=15
++            )
++            self.robot_arrow_breezy = FancyArrow(slam_x_pixels, slam_y_pixels, breezy_dx, breezy_dy, **breezy_arrow_style)
++            self.ax3.add_patch(self.robot_arrow_breezy)
++
++        self.ax1.add_patch(self.robot_arrow_true)
++        self.ax2.add_patch(self.robot_arrow_slam)
++
++    def _update_frontiers(self):
++        """Update frontier visualization"""
++        if self.frontiers:
++            frontier_x = [f[0] / self.resolution for f in self.frontiers]
++            frontier_y = [f[1] / self.resolution for f in self.frontiers]
++            self.frontier_points.set_data(frontier_x, frontier_y)
++        else:
++            self.frontier_points.set_data([], [])
+ 
+-        # 更新导航路径
+-        if self.path_line:
+-            self.path_line.remove()
+-            self.path_line = None
+-        if nav_path and len(nav_path) > 1:
+-            if self.use_mm:
+-                path_x = [p[0]*1000 for p in nav_path]
+-                path_y = [p[1]*1000 for p in nav_path]
+-            else:
+-                path_x = [p[0] for p in nav_path]
+-                path_y = [p[1] for p in nav_path]
+-            self.path_line, = self.viz.ax.plot(path_x, path_y, 'green', 
+-                                             linewidth=2, alpha=0.7, zorder=3, 
+-                                             linestyle='--', label='Navigation Path')
++    def _update_target(self):
++        """Update target visualization"""
++        if self.current_target:
++            target_x = self.current_target[0] / self.resolution
++            target_y = self.current_target[1] / self.resolution
++            self.target_point.set_data([target_x], [target_y])
++        else:
++            self.target_point.set_data([], [])
+ 
+-        # 更新前沿点
+-        if self.frontier_points:
+-            self.frontier_points.remove()
+-            self.frontier_points = None
+-        if frontiers and len(frontiers) > 0:
+-            if self.use_mm:
+-                frontier_x = [f[0]*1000 for f in frontiers]
+-                frontier_y = [f[1]*1000 for f in frontiers]
+-            else:
+-                frontier_x = [f[0] for f in frontiers]
+-                frontier_y = [f[1] for f in frontiers]
+-            self.frontier_points = self.viz.ax.scatter(frontier_x, frontier_y, 
+-                                                     c='yellow', s=30, alpha=0.8, 
+-                                                     edgecolors='orange', linewidth=1,
+-                                                     label='Frontiers', zorder=5)
++    def _update_planned_path(self):
++        """Update planned path visualization"""
++        # 由于我们现在使用分离的旋转和前进，不再显示规划路径
++        self.planned_path.set_data([], [])
++
++    def _update_lidar_scan(self):
++        """Update LiDAR scan visualization"""
++        if len(self.current_scan_points) > 1:
++            scan_x = self.current_scan_points[::2]
++            scan_y = self.current_scan_points[1::2]
++            self.scan_points.set_data(scan_x, scan_y)
++        else:
++            self.scan_points.set_data([], [])
+ 
+-        # 更新当前目标点
+-        if self.current_goal:
+-            self.current_goal.remove()
+-            self.current_goal = None
+-        if current_goal:
+-            if self.use_mm:
+-                goal_x = current_goal[0] * 1000
+-                goal_y = current_goal[1] * 1000
+-            else:
+-                goal_x = current_goal[0]
+-                goal_y = current_goal[1]
+-            self.current_goal = self.viz.ax.scatter(goal_x, goal_y, 
+-                                                  c='magenta', s=100, alpha=0.9,
+-                                                  edgecolors='purple', linewidth=2,
+-                                                  marker='*', label='Current Goal', zorder=6)
+-
+-        # 更新机器人三角形
+-        if self.robot_patch:
+-            self.robot_patch.remove()
+-            self.robot_patch = None
+-        # 机器人三角形参数
+-        tri_len = 200 if self.use_mm else 0.2  # 20cm
+-        tri_wid = 100 if self.use_mm else 0.1  # 10cm
+-        # 机器人朝向三角形顶点
+-        tip = (x_mm + tri_len * np.cos(theta), y_mm + tri_len * np.sin(theta))
+-        left = (x_mm + tri_wid * np.cos(theta + 2.5), y_mm + tri_wid * np.sin(theta + 2.5))
+-        right = (x_mm + tri_wid * np.cos(theta - 2.5), y_mm + tri_wid * np.sin(theta - 2.5))
+-        triangle = np.array([tip, left, right])
+-        self.robot_patch = mpatches.Polygon(triangle, color='red', zorder=10)
+-        self.viz.ax.add_patch(self.robot_patch)
++    def _update_status_display(self):
++        """Update status display with current information"""
++        # Main status
++        num_frontiers = len(self.frontiers) if self.frontiers else 0
++        unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
++
++        if self.exploration_complete:
++            status = "🎉 EXPLORATION COMPLETE!"
++            self.main_status.set_color('#00ff88')
++        elif self.current_target:
++            status = "🎯 ACTIVELY EXPLORING"
++            self.main_status.set_color('#ffff00')
++        else:
++            status = "🔍 SEARCHING FOR TARGETS"
++            self.main_status.set_color('#ff8800')
+ 
+-        # 更新状态文本
+-        if self.status_text:
+-            self.status_text.remove()
+-            self.status_text = None
+-        if status_info:
+-            status_str = f"Frame: {self.frame_count}\n"
+-            for key, value in status_info.items():
+-                status_str += f"{key}: {value}\n"
+-            self.status_text = self.viz.ax.text(0.02, 0.98, status_str,
+-                                              transform=self.viz.ax.transAxes,
+-                                              verticalalignment='top',
+-                                              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+-                                              fontsize=8, zorder=20)
++        self.main_status.set_text(status)
+ 
+-        # 更新图例
+-        if not self.viz.ax.get_legend():
+-            self.viz.ax.legend(loc='upper right', fontsize=8)
++        # Update statistics
++        stats_data = [
++            len(self.robot_path),
++            f"({self.robot.x:.1f}, {self.robot.y:.1f})",
++            num_frontiers,
++            f"{unknown_ratio:.1%}",
++            f"{self.timestamp:.1f}s"
++        ]
+ 
+-        # 更新计数
+-        self.frame_count += 1
++        for i, (value_text, data) in enumerate(zip(self.stats_values, stats_data)):
++            value_text.set_text(str(data))
+ 
+-    def add_obstacle_points(self, obstacle_points):
+-        """
+-        添加障碍物点可视化
+-        
+-        参数：
+-        - obstacle_points: [(x1, y1), (x2, y2), ...] 障碍物点列表
+-        """
+-        if self.obstacle_points:
+-            self.obstacle_points.remove()
+-            self.obstacle_points = None
+-        
+-        if obstacle_points and len(obstacle_points) > 0:
+-            if self.use_mm:
+-                obs_x = [p[0]*1000 for p in obstacle_points]
+-                obs_y = [p[1]*1000 for p in obstacle_points]
+-            else:
+-                obs_x = [p[0] for p in obstacle_points]
+-                obs_y = [p[1] for p in obstacle_points]
+-            
+-            self.obstacle_points = self.viz.ax.scatter(obs_x, obs_y, 
+-                                                     c='black', s=20, alpha=0.8,
+-                                                     label='Obstacles', zorder=1)
++        # Update progress bar
++        progress = 1.0 - unknown_ratio
++        self.progress_bar.set_width(0.9 * progress)
++
++        # Color code progress
++        if progress > 0.8:
++            self.progress_bar.set_facecolor('#00ff88')
++        elif progress > 0.5:
++            self.progress_bar.set_facecolor('#ffff00')
++        else:
++            self.progress_bar.set_facecolor('#ff8800')
++
++    def explore_step(self, dt=0.1):
++        """Single exploration step"""
++        self.robot_path.append([self.robot.x, self.robot.y])
+ 
+-    def save_map(self, filename='roboviz_slam_map.png'):
+-        """
+-        保存当前地图为图片
+-        """
+-        try:
+-            if hasattr(self.viz, 'fig'):
+-                self.viz.fig.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore
+-            elif hasattr(self.viz, 'figure'):
+-                self.viz.figure.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore
+-            elif hasattr(self.viz, 'ax'):
+-                self.viz.ax.figure.savefig(filename, dpi=150, bbox_inches='tight')  # type: ignore
+-            else:
+-                import matplotlib.pyplot as plt
+-                plt.savefig(filename, dpi=150, bbox_inches='tight')
+-            print(f"✅ 地图已保存: {filename}")
+-        except Exception as e:
+-            print(f"❌ 保存地图失败: {e}")
+-
+-    def close(self):
+-        """
+-        关闭可视化窗口
+-        """
+-        try:
+-            if hasattr(self.viz, 'close'):
+-                self.viz.close()
+-            else:
+-                import matplotlib.pyplot as plt
+-                plt.close('all')
+-        except Exception as e:
+-            print(f"关闭可视化窗口时出错: {e}")
++        robot_pos = (self.robot.x, self.robot.y, self.robot.theta)
++        lidar_scan = self.lidar_sim.scan(robot_pos, self.true_map, self.resolution)
++        lidar_scan.timestamp = self.timestamp
++        self.lidar_data.append(lidar_scan)
++
++        odom = Odometry(self.robot.x, self.robot.y, self.robot.theta, self.timestamp)
++        self.odometry_data.append(odom)
++
++        self.update_slam_map(lidar_scan)
++        
++        # 更新BreezySLAM（如果可用且不是第一步）
++        if self.slam_system.available and len(self.robot_path) > 1:
++            # 计算里程计数据（位姿变化）
++            dx = self.robot.x - self.prev_robot_pos[0]
++            dy = self.robot.y - self.prev_robot_pos[1]
++            dtheta = self.robot.theta - self.prev_robot_theta
++            
++            # 归一化角度差
++            while dtheta > np.pi:
++                dtheta -= 2 * np.pi
++            while dtheta < -np.pi:
++                dtheta += 2 * np.pi
++            
++            # 转换为毫米和度
++            pose_change = (int(dx * 1000), int(np.degrees(dtheta)), int(dy * 1000))
++            
++            # 更新SLAM
++            self.slam_pos = self.slam_system.update_position(lidar_scan.ranges, pose_change)
++            self.slam_map_breezy = self.slam_system.get_map_array()
++        
++        # 更新上一时刻的数据
++        self.prev_robot_pos = np.array([self.robot.x, self.robot.y])
++        self.prev_robot_theta = self.robot.theta
++        self.prev_time = self.timestamp
++
++        if self.current_target is None:
++            self.current_target = self.get_next_frontier()
++
++        if self.current_target:
++            reached = self.navigate_to_target(self.current_target)
++            if reached:
++                self.current_target = None
++        else:
++            self.current_target = self.get_next_frontier()
++            if self.current_target is None:
++                self.current_target = self.find_nearest_unknown_area()
++                if self.current_target is None:
++                    self.exploration_complete = True
++                else:
++                    unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
++                    print(f"🔍 No frontiers found, exploring nearest unknown area: {self.current_target}, "
++                          f"Unknown: {unknown_ratio:.1%}")
++
++        self.timestamp += dt
+ 
+-    def show(self):
+-        """
+-        显示可视化窗口
+-        """
++        if self.enable_visualization:
++            self.update_visualization()
++
++        return not self.exploration_complete
++
++    def run_exploration(self, max_steps=1000, delay=0.05):
++        """Run exploration with enhanced visualization"""
++        print("🚀 Starting Simplified Frontier Exploration...")
++        print("💡 Press Ctrl+C to stop early")
++
++        step = 0
++        start_time = time.time()
++
+         try:
+-            if hasattr(self.viz, 'show'):
+-                self.viz.show()
+-            else:
+-                import matplotlib.pyplot as plt
+-                plt.show()
+-        except Exception as e:
+-            print(f"显示可视化窗口时出错: {e}")
++            while step < max_steps and self.explore_step():
++                step += 1
++
++                if self.enable_visualization and delay > 0:
++                    time.sleep(delay)
++
++                if step % 50 == 0:
++                    unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
++                    elapsed_time = time.time() - start_time
++                    print(f"📊 Step {step}: Position ({self.robot.x:.2f}, {self.robot.y:.2f}), "
++                          f"Unknown: {unknown_ratio:.1%}, Time: {elapsed_time:.1f}s")
++
++        except KeyboardInterrupt:
++            print("⏹️  Exploration stopped by user")
++
++        elapsed_time = time.time() - start_time
++        unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
++
++        print(f"✅ Exploration completed in {step} steps, {elapsed_time:.1f} seconds")
++        print(f"📈 Final unknown area ratio: {unknown_ratio:.1%}")
++
++        if self.enable_visualization:
++            plt.ioff()
++            self.update_visualization()
++            print("🖼️  Visualization window will remain open")
++            plt.show()
+ 
+-    def get_frame_rate(self):
+-        """
+-        获取当前帧率
+-        """
+-        import time
+-        current_time = time.time()
+-        if self.last_update_time > 0:
+-            fps = 1.0 / (current_time - self.last_update_time)
+-        else:
+-            fps = 0
+-        self.last_update_time = current_time
+-        return fps
++        return self.get_exploration_data()
+ 
++    def run_fast_exploration(self, max_steps=1000):
++        """Run exploration without visualization for maximum speed"""
++        print("⚡ Starting Fast Exploration (No Visualization)...")
+ 
+-def test_roboviz_viewer():
+-    """
+-    测试RoboViz SLAM可视化器
+-    """
+-    import time
+-    
+-    # 创建可视化器
+-    viewer = RoboVizSLAMViewer(title='Test SLAM Viewer', use_mm=False)
+-    
+-    # 模拟数据
+-    map_bytes = bytearray(MAP_SIZE * MAP_SIZE)
+-    pose = [MAP_SIZE_M/2, MAP_SIZE_M/2, 0.0]  # 地图中心
+-    
+-    # 模拟激光扫描数据
+-    lidar_scan = [1000 + i * 50 for i in range(360)]
+-    
+-    # 模拟轨迹
+-    trajectory = []
+-    for i in range(10):
+-        x = MAP_SIZE_M/2 + i * 0.3
+-        y = MAP_SIZE_M/2 + i * 0.1
+-        theta = i * 0.1
+-        trajectory.append([x, y])
+-    
+-    # 模拟前沿点
+-    frontiers = [[1.0, 1.0], [2.0, 2.0], [3.0, 1.5]]
+-    
+-    # 模拟目标点
+-    current_goal = [MAP_SIZE_M-1, MAP_SIZE_M-1]
+-    
+-    # 更新可视化
+-    viewer.update(map_bytes, pose, lidar_scan, trajectory, None, frontiers, current_goal)
+-    
+-    print("✅ RoboViz SLAM可视化器测试完成")
+-    print(f"地图尺寸: {MAP_SIZE}x{MAP_SIZE} 像素")
+-    print(f"地图物理尺寸: {MAP_SIZE_M}x{MAP_SIZE_M} 米")
+-    print(f"分辨率: {MAP_RESOLUTION} 米/像素")
+-    
+-    # 保存测试图片
+-    viewer.save_map('test_slam_map.png')
+-    
+-    return viewer
++        step = 0
++        start_time = time.time()
++
++        try:
++            while step < max_steps and self.explore_step():
++                step += 1
++
++                if step % 100 == 0:
++                    unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
++                    elapsed_time = time.time() - start_time
++                    print(f"📊 Step {step}: Position ({self.robot.x:.2f}, {self.robot.y:.2f}), "
++                          f"Unknown: {unknown_ratio:.1%}, Time: {elapsed_time:.1f}s")
++
++        except KeyboardInterrupt:
++            print("⏹️  Exploration stopped by user")
++
++        elapsed_time = time.time() - start_time
++        unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
++
++        print(f"✅ Fast exploration completed in {step} steps, {elapsed_time:.1f} seconds")
++        print(f"📈 Final unknown area ratio: {unknown_ratio:.1%}")
++
++        return self.get_exploration_data()
++
++    def get_exploration_data(self):
++        """Get exploration data in JSON format"""
++        exploration_data = {
++            "metadata": {
++                "total_steps": len(self.lidar_data),
++                "total_time": self.timestamp,
++                "map_resolution": self.resolution,
++                "final_unknown_ratio": float(np.sum(self.slam_map == -1) / self.slam_map.size)
++            },
++            "lidar_scans": [],
++            "odometry": [],
++            "final_map": self.slam_map.tolist(),
++            "robot_path": self.robot_path
++        }
++
++        for scan in self.lidar_data:
++            exploration_data["lidar_scans"].append({
++                "ranges": scan.ranges,
++                "angles": scan.angles,
++                "timestamp": scan.timestamp
++            })
++
++        for odo in self.odometry_data:
++            exploration_data["odometry"].append({
++                "x": odo.x,
++                "y": odo.y,
++                "theta": odo.theta,
++                "timestamp": odo.timestamp
++            })
++
++        return exploration_data
+ 
+ 
++# Example usage
+ if __name__ == "__main__":
+-    # 运行测试
+-    viewer = test_roboviz_viewer()
+-    viewer.show() 
+\ No newline at end of file
++    print("🎨 === Simplified Frontier Exploration with Dual Display ===")
++    explorer = SimplifiedFrontierExplorer(enable_visualization=True)
++    exploration_data = explorer.run_exploration(max_steps=500, delay=0.02)
++    with open('simplified_exploration_data.json', 'w', encoding='utf-8') as f:
++        json.dump(exploration_data, f, indent=2, ensure_ascii=False)
++    print("💾 Exploration data saved to 'simplified_exploration_data.json'")
++    print(f"📊 Collected {len(exploration_data['lidar_scans'])} LiDAR scans")
++    print(f"📊 Collected {len(exploration_data['odometry'])} odometry readings")
+Index: config/map.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import numpy as np\r\nfrom skimage.draw import line\r\nfrom config.settings import MAP_SIZE, MAP_SIZE_M, MAP_RESOLUTION\r\n\r\n# 地图参数\r\nMAP_SIZE = 50\r\nMAP_SIZE_M = 15.0\r\nRESOLUTION = MAP_SIZE_M / MAP_SIZE\r\n\r\n# 老师给的障碍物线段\r\nSEGMENTS = [\r\n   {\r\n    \"start\": [0, 0],\r\n    \"end\": [2, 0]\r\n   },\r\n   {\r\n    \"start\": [2, 0],\r\n    \"end\": [2, 2]\r\n   },\r\n   {\r\n    \"start\": [0, 0],\r\n    \"end\": [0, 15]\r\n   },\r\n   {\r\n    \"start\": [0, 11],\r\n    \"end\": [2, 11]\r\n   },\r\n   {\r\n    \"start\": [2, 11],\r\n    \"end\": [2, 6]\r\n   },\r\n   {\r\n    \"start\": [2, 6],\r\n    \"end\": [4, 6]\r\n   },\r\n   {\r\n    \"start\": [0, 15],\r\n    \"end\": [11, 15]\r\n   },\r\n   {\r\n    \"start\": [2, 15],\r\n    \"end\": [2, 13]\r\n   },\r\n   {\r\n    \"start\": [2, 13],\r\n    \"end\": [9, 13]\r\n   },\r\n   {\r\n    \"start\": [4, 13],\r\n    \"end\": [4, 8]\r\n   },\r\n   {\r\n    \"start\": [6, 13],\r\n    \"end\": [6, 10]\r\n   },\r\n   {\r\n    \"start\": [6, 10],\r\n    \"end\": [9, 10]\r\n   },\r\n   {\r\n    \"start\": [9, 10],\r\n    \"end\": [9, 13]\r\n   },\r\n   {\r\n    \"start\": [11, 15],\r\n    \"end\": [11, 10]\r\n   },\r\n   {\r\n    \"start\": [4, 0],\r\n    \"end\": [4, 2]\r\n   },\r\n   {\r\n    \"start\": [4, 0],\r\n    \"end\": [15, 0]\r\n   },\r\n    {\r\n    \"start\": [11, 0],\r\n    \"end\": [11, 2]\r\n   },\r\n   {\r\n    \"start\": [11, 2],\r\n    \"end\": [6, 2]\r\n   },\r\n   {\r\n    \"start\": [6, 2],\r\n    \"end\": [6, 6]\r\n   },\r\n   {\r\n    \"start\": [6, 4],\r\n    \"end\": [2, 4]\r\n   },\r\n   {\r\n    \"start\": [9, 2],\r\n    \"end\": [9, 4]\r\n   },\r\n   {\r\n    \"start\": [15, 0],\r\n    \"end\": [15, 15]\r\n   },\r\n   {\r\n    \"start\": [15, 6],\r\n    \"end\": [13, 6]\r\n   },\r\n   {\r\n    \"start\": [13, 6],\r\n    \"end\": [13, 2]\r\n   },\r\n   {\r\n    \"start\": [15, 15],\r\n    \"end\": [13, 15]\r\n   },\r\n   {\r\n    \"start\": [13, 15],\r\n    \"end\": [13, 8]\r\n   },\r\n   {\r\n    \"start\": [13, 8],\r\n    \"end\": [11, 8]\r\n   },\r\n   {\r\n    \"start\": [4, 8],\r\n    \"end\": [9, 8]\r\n   },\r\n   {\r\n    \"start\": [9, 8],\r\n    \"end\": [9, 6]\r\n   },\r\n   {\r\n    \"start\": [9, 6],\r\n    \"end\": [11, 6]\r\n   },\r\n   {\r\n    \"start\": [11, 6],\r\n    \"end\": [11, 4]\r\n   }\r\n  ]\r\n\r\ndef add_segments_to_grid(grid_map, segments, resolution):\r\n    for seg in segments:\r\n        (x0, y0), (x1, y1) = seg['start'], seg['end']\r\n        gx0, gy0 = int(x0 / resolution), int(y0 / resolution)\r\n        gx1, gy1 = int(x1 / resolution), int(y1 / resolution)\r\n        rr, cc = line(gy0, gx0, gy1, gx1)\r\n        rr = np.clip(rr, 0, grid_map.shape[0] - 1)\r\n        cc = np.clip(cc, 0, grid_map.shape[1] - 1)\r\n        grid_map[rr, cc] = 1\r\n\r\ndef get_global_map():\r\n    grid_map = np.zeros((MAP_SIZE, MAP_SIZE), dtype=np.uint8)\r\n    add_segments_to_grid(grid_map, SEGMENTS, MAP_RESOLUTION)\r\n    return grid_map
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/config/map.py b/config/map.py
+--- a/config/map.py	(revision 298ac29f37e3999bd2e2504354a68a98f8c62904)
++++ b/config/map.py	(date 1751471882905)
+@@ -148,4 +148,4 @@
+ def get_global_map():
+     grid_map = np.zeros((MAP_SIZE, MAP_SIZE), dtype=np.uint8)
+     add_segments_to_grid(grid_map, SEGMENTS, MAP_RESOLUTION)
+-    return grid_map
+\ No newline at end of file
++    return grid_map
+Index: slam/slam.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import time\r\nimport math\r\nimport numpy as np\r\nimport matplotlib.pyplot as plt\r\nfrom breezyslam.algorithms import RMHC_SLAM\r\nfrom breezyslam.sensors import Laser\r\nfrom roboviz import MapVisualizer\r\nfrom config.map import get_global_map\r\nfrom config.settings import START_POSITION, EXIT_POSITION, MAP_RESOLUTION\r\nimport heapq\r\nfrom exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, \\\r\n    detect_frontiers\r\nfrom matplotlib.patches import Circle\r\n\r\n\r\nclass CarSLAM:\r\n    def __init__(self, map_size_pixels=1024, map_size_meters=18.0, laser_params=None, grid_map=None):\r\n        # 初始化激光模型（示例参数，需根据实际激光雷达调整）\r\n        self.laser = Laser(scan_size=360, scan_rate_hz=100, detection_angle_degrees=360,\r\n                           distance_no_detection_mm=10000, detection_margin=0, offset_mm=0)\r\n        # 初始化SLAM对象\r\n        self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)\r\n        self.mapbytes = bytearray(map_size_pixels * map_size_pixels)\r\n        # 初始化可视化工具\r\n        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'Car SLAM Visualization')\r\n        # 新增：保存障碍物地图\r\n        self.grid_map = grid_map\r\n\r\n    def update_position(self, lidar_scan, pose_change, x, y, theta):\r\n        # 假设lidar_scan是当前激光雷达扫描数据（列表形式）\r\n        # 更新SLAM（传入里程计数据）\r\n        self.slam.update(lidar_scan, pose_change)\r\n        # 获取更精确的位置\r\n        x_mm, y_mm, theta_degrees = self.slam.getpos()\r\n        # 更新地图\r\n        self.slam.getmap(self.mapbytes)\r\n        # 显示地图和当前位置（转换为米）\r\n        self.viz.display(x_mm / 1000, y_mm / 1000, theta_degrees, self.mapbytes)\r\n        return x_mm, y_mm, theta_degrees\r\n\r\n    def simulate_straight_line(self, distance_mm=8000, step_mm=100):\r\n        \"\"\"沿直线移动小车并更新SLAM地图，起点为 START_POSITION\"\"\"\r\n        # 起点（米转毫米）\r\n        x = START_POSITION['x'] * 1000\r\n        y = START_POSITION['y'] * 1000\r\n        theta = START_POSITION['theta']\r\n        for _ in range(int(distance_mm / step_mm)):\r\n            x += step_mm * np.cos(np.deg2rad(theta))\r\n            y += step_mm * np.sin(np.deg2rad(theta))\r\n            lidar_scan = generate_lidar_scan_from_gridmap(x, y, theta, self.grid_map, MAP_RESOLUTION)\r\n            pose_change = (step_mm, 0, 0)  # 前进step_mm，无侧向移动，无旋转\r\n            self.update_position(lidar_scan, pose_change, x, y, theta)\r\n            time.sleep(0.1)\r\n        plt.pause(0.5)\r\n\r\n    def simulate_curved_path(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, radius_mm=5000, angle_deg=90,\r\n                             step_mm=100):\r\n        \"\"\"模拟小车沿圆弧路径运动\"\"\"\r\n        # 转换角度为弧度\r\n        angle_rad = math.radians(angle_deg)\r\n        start_theta_rad = math.radians(start_theta_deg)\r\n\r\n        # 计算圆弧长度和步数\r\n        arc_length_mm = radius_mm * angle_rad\r\n        num_steps = max(1, int(arc_length_mm / step_mm))\r\n\r\n        # 计算圆心位置（左转）\r\n        center_x = start_x_mm + radius_mm * math.cos(start_theta_rad + math.pi / 2)\r\n        center_y = start_y_mm + radius_mm * math.sin(start_theta_rad + math.pi / 2)\r\n\r\n        x, y, theta = start_x_mm, start_y_mm, start_theta_deg\r\n\r\n        for i in range(num_steps):\r\n            # 计算当前角度和位置\r\n            current_angle_rad = start_theta_rad + (i / num_steps) * angle_rad + math.pi / 2\r\n            x = center_x - radius_mm * math.cos(current_angle_rad)\r\n            y = center_y - radius_mm * math.sin(current_angle_rad)\r\n            theta = start_theta_deg + (i / num_steps) * angle_deg\r\n\r\n            # 生成激光扫描数据\r\n            lidar_scan = generate_square_lidar_scan(x, y, theta)\r\n\r\n            # 计算步长和角度变化\r\n            delta_theta = angle_deg / num_steps\r\n            pose_change = (step_mm, delta_theta, 0)\r\n\r\n            # 更新SLAM位置\r\n            self.update_position(lidar_scan, pose_change, x, y, theta)\r\n            time.sleep(0.1)\r\n\r\n        plt.pause(0.5)\r\n\r\n\r\ndef generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, field_width_mm=10000, max_range_mm=10000):\r\n    \"\"\"模拟长方形场地中的激光雷达扫描数据\"\"\"\r\n    scan = []\r\n    theta_rad = math.radians(theta_deg)\r\n    half_fov = math.radians(180)  # 假设激光雷达水平视场角为360度\r\n    step = 2 * half_fov / 359  # 360个扫描点\r\n\r\n    for i in range(360):\r\n        angle = theta_rad - half_fov + i * step\r\n        dx = math.cos(angle)\r\n        dy = math.sin(angle)\r\n\r\n        # 计算到长方形场地边界的距离\r\n        t = float('inf')\r\n\r\n        # 左边界 (x=0)\r\n        if dx < 0:\r\n            t_left = (0 - x_mm) / dx\r\n            if t_left > 0:\r\n                y_intersect = y_mm + dy * t_left\r\n                if 0 <= y_intersect <= field_width_mm:\r\n                    t = min(t, t_left)\r\n\r\n        # 右边界 (x=field_length_mm)\r\n        if dx > 0:\r\n            t_right = (field_length_mm - x_mm) / dx\r\n            if t_right > 0:\r\n                y_intersect = y_mm + dy * t_right\r\n                if 0 <= y_intersect <= field_width_mm:\r\n                    t = min(t, t_right)\r\n\r\n        # 下边界 (y=0)\r\n        if dy < 0:\r\n            t_bottom = (0 - y_mm) / dy\r\n            if t_bottom > 0:\r\n                x_intersect = x_mm + dx * t_bottom\r\n                if 0 <= x_intersect <= field_length_mm:\r\n                    t = min(t, t_bottom)\r\n\r\n        # 上边界 (y=field_width_mm)\r\n        if dy > 0:\r\n            t_top = (field_width_mm - y_mm) / dy\r\n            if t_top > 0:\r\n                x_intersect = x_mm + dx * t_top\r\n                if 0 <= x_intersect <= field_length_mm:\r\n                    t = min(t, t_top)\r\n\r\n        distance = t if t != float('inf') else max_range_mm\r\n        scan.append(min(distance, max_range_mm))\r\n\r\n    return scan\r\n\r\n\r\ndef generate_lidar_scan_from_gridmap(x_mm, y_mm, theta_deg, grid_map, map_resolution, max_range_mm=4000, scan_size=360):\r\n    \"\"\"\r\n    基于栅格地图的激光雷达模拟。\r\n    x_mm, y_mm: 机器人位置（毫米）\r\n    theta_deg: 机器人朝向（度）\r\n    grid_map: 2D numpy array，障碍物为1\r\n    map_resolution: 每格米数\r\n    max_range_mm: 最大探测距离（毫米）\r\n    scan_size: 激光束数\r\n    返回: 长度为 scan_size 的距离数组（毫米）\r\n    \"\"\"\r\n    scan = []\r\n    map_h, map_w = grid_map.shape\r\n    x0 = x_mm / 1000 / map_resolution  # 转为格子坐标\r\n    y0 = y_mm / 1000 / map_resolution\r\n    for i in range(scan_size):\r\n        angle = math.radians(theta_deg) + 2 * math.pi * i / scan_size\r\n        dx = math.cos(angle)\r\n        dy = math.sin(angle)\r\n        # DDA/Bresenham\r\n        for r in range(1, int(max_range_mm / (map_resolution * 1000))):\r\n            x = x0 + dx * r\r\n            y = y0 + dy * r\r\n            xi, yi = int(round(x)), int(round(y))\r\n            if xi < 0 or xi >= map_w or yi < 0 or yi >= map_h:\r\n                distance = r * map_resolution * 1000\r\n                break\r\n            if grid_map[yi, xi] == 1:\r\n                distance = r * map_resolution * 1000\r\n                break\r\n        else:\r\n            distance = max_range_mm\r\n        scan.append(distance)\r\n    return scan\r\n\r\n\r\n# ========== 常量定义 ==========\r\nLIDAR_ANGLE_RES = 1  # 每1度一束激光，360束\r\nLIDAR_NUM = 360\r\nLIDAR_MAX_DIST = 20.0  # 激光最大探测距离（米，可根据需要调整）\r\n\r\n\r\n# ========== A* 路径规划 ==========\r\ndef astar(start, goal, occ_map, map_resolution, map_size):\r\n    sx, sy = world_to_grid(start[0], start[1], map_resolution)\r\n    gx, gy = world_to_grid(goal[0], goal[1], map_resolution)\r\n    open_set = []\r\n    heapq.heappush(open_set, (0, (sx, sy)))\r\n    came_from = {}\r\n    g_score = {(sx, sy): 0}\r\n    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]\r\n    while open_set:\r\n        _, current = heapq.heappop(open_set)\r\n        if current == (gx, gy):\r\n            path = [current]\r\n            while current in came_from:\r\n                current = came_from[current]\r\n                path.append(current)\r\n            path.reverse()\r\n            return [grid_to_world(x, y, map_resolution) for x, y in path]\r\n        for dx, dy in dirs:\r\n            nx, ny = current[0] + dx, current[1] + dy\r\n            if 0 <= nx < map_size and 0 <= ny < map_size and occ_map[ny, nx] != 1:\r\n                tentative_g = g_score[current] + np.hypot(dx, dy)\r\n                if (nx, ny) not in g_score or tentative_g < g_score[(nx, ny)]:\r\n                    g_score[(nx, ny)] = tentative_g\r\n                    f = tentative_g + np.hypot(gx - nx, gy - ny)\r\n                    heapq.heappush(open_set, (f, (nx, ny)))\r\n                    came_from[(nx, ny)] = current\r\n    return None\r\n\r\n\r\n# ========== 地图更新 ==========\r\ndef update_known_map(pos, scan, known_map, robot_theta, map_resolution, lidar_angle_res, lidar_max_dist):\r\n    for i, dist in enumerate(scan):\r\n        angle = np.deg2rad(i * lidar_angle_res)\r\n        a = robot_theta + angle\r\n        for r in np.arange(0, min(dist, lidar_max_dist), map_resolution / 2):\r\n            x = pos[0] + r * np.cos(a)\r\n            y = pos[1] + r * np.sin(a)\r\n            gx, gy = world_to_grid(x, y, map_resolution)\r\n            if gx < 0 or gx >= known_map.shape[1] or gy < 0 or gy >= known_map.shape[0]:\r\n                break\r\n            if known_map[gy, gx] == -1:\r\n                known_map[gy, gx] = 0\r\n        if dist < lidar_max_dist:\r\n            x = pos[0] + dist * np.cos(a)\r\n            y = pos[1] + dist * np.sin(a)\r\n            gx, gy = world_to_grid(x, y, map_resolution)\r\n            if 0 <= gx < known_map.shape[1] and 0 <= gy < known_map.shape[0]:\r\n                known_map[gy, gx] = 1\r\n\r\n\r\ndef is_frontier(known_map, gx, gy):\r\n    if known_map[gy, gx] != 0:\r\n        return False\r\n    # 只要有一个邻居是未知区，就是frontier\r\n    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:\r\n        nx, ny = gx + dx, gy + dy\r\n        if 0 <= nx < known_map.shape[1] and 0 <= ny < known_map.shape[0]:\r\n            if known_map[ny, nx] == -1:\r\n                return True\r\n    return False\r\n\r\n\r\n# ========== 主循环 ==========\r\nif __name__ == '__main__':\r\n    try:\r\n        import matplotlib.pyplot as plt\r\n        from config.map import MAP_SIZE\r\n        from config.settings import ROBOT_RADIUS\r\n\r\n        true_map = get_global_map()\r\n        known_map = np.full_like(true_map, -1, dtype=float)\r\n        explorer = ExplorationManager(map_resolution=MAP_RESOLUTION)\r\n        robot_pos = np.array([START_POSITION['x'], START_POSITION['y']])\r\n        robot_theta = START_POSITION['theta']\r\n        trajectory = [robot_pos.copy()]\r\n        MAP_PIXELS = 1024\r\n        MAP_METERS = 20.0\r\n        PADDING = 7.0  # 米\r\n        MAP_METERS = MAP_METERS + 2 * PADDING\r\n        MAP_PIXELS = int(MAP_PIXELS + 2 * (PADDING / MAP_RESOLUTION))\r\n        slam = CarSLAM(map_size_pixels=MAP_PIXELS, map_size_meters=MAP_METERS, grid_map=true_map)\r\n        plt.ion()\r\n        fig, ax = plt.subplots(figsize=(8, 8))\r\n        # 先用起点位置做一次激光扫描，更新已知地图\r\n        scan_mm = generate_lidar_scan_from_gridmap(\r\n            robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),\r\n            true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)\r\n        scan = np.array(scan_mm) / 1000.0  # 转为米\r\n        update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)\r\n        print('激光初始化后已知地图空地数：', np.sum(known_map == 0))\r\n        test_frontiers = explorer.get_next_target(known_map, robot_pos)\r\n        print('激光初始化后前沿点（目标）:', test_frontiers)\r\n        print('进入主循环')\r\n        step_size = 0.1  # 每次前进0.1米\r\n        turn_step = np.deg2rad(5)  # 每次最多转5度\r\n        while True:\r\n            # 1. 用真实地图模拟激光\r\n            scan_mm = generate_lidar_scan_from_gridmap(\r\n                robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),\r\n                true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)\r\n            scan = np.array(scan_mm) / 1000.0  # 转为米\r\n            # 2. 更新已知地图\r\n            update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)\r\n            # 3. 探索逻辑\r\n            # 获取所有frontier点\r\n            frontiers = detect_frontiers(known_map, unknown_val=-1, free_threshold=0.2, map_resolution=MAP_RESOLUTION)\r\n            target = None\r\n            for f in frontiers:\r\n                gx, gy = world_to_grid(f[0], f[1], MAP_RESOLUTION)\r\n                if known_map[gy, gx] == 0:\r\n                    target = f\r\n                    break\r\n            if target is None:\r\n                print('探索完成！')\r\n                break\r\n            print(f'当前机器人位置: {robot_pos}, theta(rad): {robot_theta:.2f}')\r\n            print(f'当前已知空地数: {np.sum(known_map == 0)}, 前沿点: {target}')\r\n            path = astar(robot_pos, target, known_map, MAP_RESOLUTION, MAP_SIZE)\r\n            if path is None or len(path) < 2:\r\n                print(f'无法到达目标，path={path}，target={target}，robot_pos={robot_pos}')\r\n                gx, gy = world_to_grid(target[0], target[1], MAP_RESOLUTION)\r\n                print(f\"A*失败，目标点格子({gx},{gy})，known_map值={known_map[gy, gx]}\")\r\n                print(\r\n                    f\"robot_pos={robot_pos}, robot格子={world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)}, known_map值={known_map[world_to_grid(robot_pos[1], robot_pos[0], MAP_RESOLUTION)]}\")\r\n                # 可视化known_map，标出robot和target\r\n                plt.imshow(known_map, cmap='Blues', origin='lower')\r\n                plt.plot(gx, gy, 'rx', label='target')\r\n                rx, ry = world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)\r\n                plt.plot(rx, ry, 'go', label='robot')\r\n                plt.legend()\r\n                plt.title('A*失败时的已知地图')\r\n                plt.show()\r\n                continue\r\n            # === 平滑运动到下一个A*点 ===\r\n            for i in range(1, len(path)):\r\n                target_pos = np.array(path[i])\r\n                while True:\r\n                    delta = target_pos - robot_pos\r\n                    dist = np.linalg.norm(delta)\r\n                    target_theta = np.arctan2(delta[1], delta[0])\r\n                    dtheta = target_theta - robot_theta\r\n                    dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi\r\n                    if abs(dtheta) > 1e-2:\r\n                        turn = np.clip(dtheta, -turn_step, turn_step)\r\n                        robot_theta += turn\r\n                        pose_change = (0, turn, 0)\r\n                    else:\r\n                        move = min(step_size, dist)\r\n                        robot_pos += move * np.array([np.cos(robot_theta), np.sin(robot_theta)])\r\n                        pose_change = (move * 1000, 0, 0)\r\n                    # 激光模拟\r\n                    scan_mm = generate_lidar_scan_from_gridmap(\r\n                        robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),\r\n                        true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)\r\n                    scan = np.array(scan_mm) / 1000.0\r\n                    update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES,\r\n                                     LIDAR_MAX_DIST)\r\n                    slam.update_position(scan_mm, pose_change, robot_pos[0] * 1000, robot_pos[1] * 1000,\r\n                                         np.rad2deg(robot_theta))\r\n                    trajectory.append(robot_pos.copy())\r\n                    # 可视化\r\n                    ax.clear()\r\n                    # 地图静止显示，origin='lower'\r\n                    ax.imshow(true_map, cmap='gray_r', alpha=0.3, origin='lower')\r\n                    show_map = known_map.copy()\r\n                    show_map[show_map == -1] = 0.5\r\n                    ax.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')\r\n                    # 轨迹和小车位置用世界坐标\r\n                    ax.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory],\r\n                            'g.-', linewidth=2)\r\n                    ax.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)\r\n                    if target is not None:\r\n                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)\r\n                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y',\r\n                                markersize=18)\r\n                    ax.set_xlim(0, MAP_SIZE)\r\n                    ax.set_ylim(0, MAP_SIZE)\r\n                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION),\r\n                                    radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')\r\n                    ax.add_patch(circle)\r\n                    ax.set_title('SLAM Exploration')\r\n                    plt.pause(0.01)\r\n                    if abs(dtheta) <= 1e-2 and dist < step_size:\r\n                        break\r\n                # === Graph SLAM节点采样：每到达A*下一个点时采样 ===\r\n                # 你可以在这里加Graph SLAM节点和边的采样逻辑\r\n        plt.ioff()\r\n        plt.show()\r\n        input('按回车退出...')\r\n    except Exception as e:\r\n        import traceback\r\n\r\n        print('全局异常:', e)\r\n        traceback.print_exc()\r\n        input('按回车退出...')
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/slam/slam.py b/slam/slam.py
+--- a/slam/slam.py	(revision 298ac29f37e3999bd2e2504354a68a98f8c62904)
++++ b/slam/slam.py	(date 1751472154021)
+@@ -8,8 +8,7 @@
+ from config.map import get_global_map
+ from config.settings import START_POSITION, EXIT_POSITION, MAP_RESOLUTION
+ import heapq
+-from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, \
+-    detect_frontiers
++from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, detect_frontiers
+ from matplotlib.patches import Circle
+ 
+ 
+@@ -143,7 +142,6 @@
+ 
+     return scan
+ 
+-
+ def generate_lidar_scan_from_gridmap(x_mm, y_mm, theta_deg, grid_map, map_resolution, max_range_mm=4000, scan_size=360):
+     """
+     基于栅格地图的激光雷达模拟。
+@@ -179,13 +177,11 @@
+         scan.append(distance)
+     return scan
+ 
+-
+ # ========== 常量定义 ==========
+ LIDAR_ANGLE_RES = 1  # 每1度一束激光，360束
+ LIDAR_NUM = 360
+ LIDAR_MAX_DIST = 20.0  # 激光最大探测距离（米，可根据需要调整）
+ 
+-
+ # ========== A* 路径规划 ==========
+ def astar(start, goal, occ_map, map_resolution, map_size):
+     sx, sy = world_to_grid(start[0], start[1], map_resolution)
+@@ -194,7 +190,7 @@
+     heapq.heappush(open_set, (0, (sx, sy)))
+     came_from = {}
+     g_score = {(sx, sy): 0}
+-    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
++    dirs = [(-1,0),(1,0),(0,-1),(0,1),(-1,-1),(-1,1),(1,-1),(1,1)]
+     while open_set:
+         _, current = heapq.heappop(open_set)
+         if current == (gx, gy):
+@@ -205,23 +201,22 @@
+             path.reverse()
+             return [grid_to_world(x, y, map_resolution) for x, y in path]
+         for dx, dy in dirs:
+-            nx, ny = current[0] + dx, current[1] + dy
++            nx, ny = current[0]+dx, current[1]+dy
+             if 0 <= nx < map_size and 0 <= ny < map_size and occ_map[ny, nx] != 1:
+                 tentative_g = g_score[current] + np.hypot(dx, dy)
+                 if (nx, ny) not in g_score or tentative_g < g_score[(nx, ny)]:
+                     g_score[(nx, ny)] = tentative_g
+-                    f = tentative_g + np.hypot(gx - nx, gy - ny)
++                    f = tentative_g + np.hypot(gx-nx, gy-ny)
+                     heapq.heappush(open_set, (f, (nx, ny)))
+                     came_from[(nx, ny)] = current
+     return None
+ 
+-
+ # ========== 地图更新 ==========
+ def update_known_map(pos, scan, known_map, robot_theta, map_resolution, lidar_angle_res, lidar_max_dist):
+     for i, dist in enumerate(scan):
+         angle = np.deg2rad(i * lidar_angle_res)
+         a = robot_theta + angle
+-        for r in np.arange(0, min(dist, lidar_max_dist), map_resolution / 2):
++        for r in np.arange(0, min(dist, lidar_max_dist), map_resolution/2):
+             x = pos[0] + r * np.cos(a)
+             y = pos[1] + r * np.sin(a)
+             gx, gy = world_to_grid(x, y, map_resolution)
+@@ -236,26 +231,23 @@
+             if 0 <= gx < known_map.shape[1] and 0 <= gy < known_map.shape[0]:
+                 known_map[gy, gx] = 1
+ 
+-
+ def is_frontier(known_map, gx, gy):
+     if known_map[gy, gx] != 0:
+         return False
+     # 只要有一个邻居是未知区，就是frontier
+-    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+-        nx, ny = gx + dx, gy + dy
++    for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
++        nx, ny = gx+dx, gy+dy
+         if 0 <= nx < known_map.shape[1] and 0 <= ny < known_map.shape[0]:
+             if known_map[ny, nx] == -1:
+                 return True
+     return False
+ 
+-
+ # ========== 主循环 ==========
+ if __name__ == '__main__':
+     try:
+         import matplotlib.pyplot as plt
+         from config.map import MAP_SIZE
+         from config.settings import ROBOT_RADIUS
+-
+         true_map = get_global_map()
+         known_map = np.full_like(true_map, -1, dtype=float)
+         explorer = ExplorationManager(map_resolution=MAP_RESOLUTION)
+@@ -269,11 +261,11 @@
+         MAP_PIXELS = int(MAP_PIXELS + 2 * (PADDING / MAP_RESOLUTION))
+         slam = CarSLAM(map_size_pixels=MAP_PIXELS, map_size_meters=MAP_METERS, grid_map=true_map)
+         plt.ion()
+-        fig, ax = plt.subplots(figsize=(8, 8))
++        fig, ax = plt.subplots(figsize=(8,8))
+         # 先用起点位置做一次激光扫描，更新已知地图
+         scan_mm = generate_lidar_scan_from_gridmap(
+-            robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+-            true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
++            robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta),
++            true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST*1000), scan_size=LIDAR_NUM)
+         scan = np.array(scan_mm) / 1000.0  # 转为米
+         update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
+         print('激光初始化后已知地图空地数：', np.sum(known_map == 0))
+@@ -285,8 +277,8 @@
+         while True:
+             # 1. 用真实地图模拟激光
+             scan_mm = generate_lidar_scan_from_gridmap(
+-                robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+-                true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
++                robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta),
++                true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST*1000), scan_size=LIDAR_NUM)
+             scan = np.array(scan_mm) / 1000.0  # 转为米
+             # 2. 更新已知地图
+             update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
+@@ -309,8 +301,7 @@
+                 print(f'无法到达目标，path={path}，target={target}，robot_pos={robot_pos}')
+                 gx, gy = world_to_grid(target[0], target[1], MAP_RESOLUTION)
+                 print(f"A*失败，目标点格子({gx},{gy})，known_map值={known_map[gy, gx]}")
+-                print(
+-                    f"robot_pos={robot_pos}, robot格子={world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)}, known_map值={known_map[world_to_grid(robot_pos[1], robot_pos[0], MAP_RESOLUTION)]}")
++                print(f"robot_pos={robot_pos}, robot格子={world_to_grid(robot_pos[0], robot_pos[1], MAP_RESOLUTION)}, known_map值={known_map[world_to_grid(robot_pos[1], robot_pos[0], MAP_RESOLUTION)]}")
+                 # 可视化known_map，标出robot和target
+                 plt.imshow(known_map, cmap='Blues', origin='lower')
+                 plt.plot(gx, gy, 'rx', label='target')
+@@ -339,13 +330,11 @@
+                         pose_change = (move * 1000, 0, 0)
+                     # 激光模拟
+                     scan_mm = generate_lidar_scan_from_gridmap(
+-                        robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+-                        true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
++                        robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta),
++                        true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST*1000), scan_size=LIDAR_NUM)
+                     scan = np.array(scan_mm) / 1000.0
+-                    update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES,
+-                                     LIDAR_MAX_DIST)
+-                    slam.update_position(scan_mm, pose_change, robot_pos[0] * 1000, robot_pos[1] * 1000,
+-                                         np.rad2deg(robot_theta))
++                    update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
++                    slam.update_position(scan_mm, pose_change, robot_pos[0]*1000, robot_pos[1]*1000, np.rad2deg(robot_theta))
+                     trajectory.append(robot_pos.copy())
+                     # 可视化
+                     ax.clear()
+@@ -355,17 +344,14 @@
+                     show_map[show_map == -1] = 0.5
+                     ax.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
+                     # 轨迹和小车位置用世界坐标
+-                    ax.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory],
+-                            'g.-', linewidth=2)
+-                    ax.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
++                    ax.plot([p[0]/MAP_RESOLUTION for p in trajectory], [p[1]/MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
++                    ax.plot(robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION, 'ro', markersize=8)
+                     if target is not None:
+-                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
+-                        ax.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y',
+-                                markersize=18)
++                        ax.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, 'yx', markersize=12)
++                        ax.plot(target[0]/MAP_RESOLUTION, target[1]/MAP_RESOLUTION, marker='*', color='y', markersize=18)
+                     ax.set_xlim(0, MAP_SIZE)
+                     ax.set_ylim(0, MAP_SIZE)
+-                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION),
+-                                    radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
++                    circle = Circle((robot_pos[0]/MAP_RESOLUTION, robot_pos[1]/MAP_RESOLUTION), radius=ROBOT_RADIUS/MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+                     ax.add_patch(circle)
+                     ax.set_title('SLAM Exploration')
+                     plt.pause(0.01)
+@@ -378,7 +364,9 @@
+         input('按回车退出...')
+     except Exception as e:
+         import traceback
+-
++        print('全局异常:', e)
++        traceback.print_exc()
++        input('按回车退出...')
+         print('全局异常:', e)
+         traceback.print_exc()
+         input('按回车退出...')
+\ No newline at end of file
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"AutoImportSettings\">\r\n    <option name=\"autoReloadType\" value=\"SELECTIVE\" />\r\n  </component>\r\n  <component name=\"ChangeListManager\">\r\n    <list default=\"true\" id=\"45e14498-f268-4c87-94ed-665d14b11296\" name=\"更改\" comment=\"\">\r\n      <change afterPath=\"$PROJECT_DIR$/breezy_slam.py\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/.idea/workspace.xml\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/.idea/workspace.xml\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/config/map.py\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/config/map.py\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/exploration/test.py\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/exploration/test.py\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0282_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0282_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0282_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0282_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0283_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0283_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0283_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0283_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0284_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0284_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0284_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0284_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0285_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0285_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0285_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0285_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0286_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0286_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0286_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0286_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0287_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0287_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0287_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0287_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0288_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0288_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0288_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0288_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0289_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0289_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0289_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0289_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0290_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0290_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0290_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0290_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0291_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0291_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0291_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0291_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0292_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0292_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0292_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0292_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0293_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0293_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0293_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0293_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0294_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0294_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0294_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0294_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0295_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0295_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0295_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0295_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0296_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0296_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0296_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0296_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0297_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0297_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0297_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0297_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0298_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0298_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0298_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0298_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0299_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0299_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0299_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0299_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0300_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0300_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0300_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0300_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0301_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0301_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0301_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0301_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0302_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0302_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0302_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0302_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0303_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0303_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0303_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0303_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0304_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0304_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0304_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0304_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0305_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0305_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0305_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0305_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0306_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0306_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0306_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0306_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0307_map.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0307_pose.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0307_trajectory.npy\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/output/keyframes/keyframe_0307_viz.png\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/slam/slam.py\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/slam/slam.py\" afterDir=\"false\" />\r\n    </list>\r\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\r\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\r\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\r\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\r\n  </component>\r\n  <component name=\"FileTemplateManagerImpl\">\r\n    <option name=\"RECENT_TEMPLATES\">\r\n      <list>\r\n        <option value=\"Python Script\" />\r\n      </list>\r\n    </option>\r\n  </component>\r\n  <component name=\"Git.Settings\">\r\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$\" />\r\n  </component>\r\n  <component name=\"ProjectColorInfo\">{\r\n  &quot;associatedIndex&quot;: 0\r\n}</component>\r\n  <component name=\"ProjectId\" id=\"2z8lhl5xzgQh1WwaW4BqdHz8aks\" />\r\n  <component name=\"ProjectLevelVcsManager\" settingsEditedManually=\"true\">\r\n    <ConfirmationsSetting value=\"2\" id=\"Add\" />\r\n  </component>\r\n  <component name=\"ProjectViewState\">\r\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\r\n    <option name=\"showLibraryContents\" value=\"true\" />\r\n  </component>\r\n  <component name=\"PropertiesComponent\"><![CDATA[{\r\n  \"keyToString\": {\r\n    \"Python 测试.Python 测试 (enhanced_test.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (simple_test.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (simple_viz_test.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (slamtester.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_exploration_slam.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_frontier_detect.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_slam_exception.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_system.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_system_unittest.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (test_visualization.py 内).executor\": \"Run\",\r\n    \"Python 测试.Python 测试 (visualize_path.py 内).executor\": \"Run\",\r\n    \"Python.SLAM.executor\": \"Run\",\r\n    \"Python.breezy_slam.executor\": \"Run\",\r\n    \"Python.breezy_slam_adapter.executor\": \"Run\",\r\n    \"Python.data_logger.executor\": \"Run\",\r\n    \"Python.demo_complete_system.executor\": \"Run\",\r\n    \"Python.dwa_planner.executor\": \"Run\",\r\n    \"Python.dynamic_window_approach.executor\": \"Run\",\r\n    \"Python.exit_detection.executor\": \"Run\",\r\n    \"Python.fast_slam1.executor\": \"Run\",\r\n    \"Python.frontier_detect.executor\": \"Run\",\r\n    \"Python.generate_map_segments.executor\": \"Run\",\r\n    \"Python.generate_map_trajectories.executor\": \"Run\",\r\n    \"Python.hybrid_a_star_planner.executor\": \"Run\",\r\n    \"Python.main.executor\": \"Run\",\r\n    \"Python.main_pipeline.executor\": \"Run\",\r\n    \"Python.map.executor\": \"Run\",\r\n    \"Python.map_viz.executor\": \"Run\",\r\n    \"Python.mapper.executor\": \"Run\",\r\n    \"Python.matplotlib_viz.executor\": \"Run\",\r\n    \"Python.move_to_pose.executor\": \"Run\",\r\n    \"Python.move_to_pose_robot.executor\": \"Run\",\r\n    \"Python.path_planner.executor\": \"Run\",\r\n    \"Python.plot.executor\": \"Run\",\r\n    \"Python.postprocess_path.executor\": \"Run\",\r\n    \"Python.roboviz_slam_demo.executor\": \"Run\",\r\n    \"Python.roboviz_slam_viz.executor\": \"Run\",\r\n    \"Python.run_slam_roboviz.executor\": \"Run\",\r\n    \"Python.settings.executor\": \"Run\",\r\n    \"Python.sim_explore_slam.executor\": \"Run\",\r\n    \"Python.simple_animation_demo.executor\": \"Run\",\r\n    \"Python.simple_exploration_demo.executor\": \"Run\",\r\n    \"Python.simple_test.executor\": \"Run\",\r\n    \"Python.simulate_exploration.executor\": \"Run\",\r\n    \"Python.simulate_exploration_new.executor\": \"Run\",\r\n    \"Python.slam.executor\": \"Run\",\r\n    \"Python.slam_demo.executor\": \"Run\",\r\n    \"Python.slam_simulation.executor\": \"Run\",\r\n    \"Python.test.executor\": \"Run\",\r\n    \"Python.test1.executor\": \"Run\",\r\n    \"Python.visualize_dwa_path.executor\": \"Run\",\r\n    \"Python.visualize_path.executor\": \"Run\",\r\n    \"Python.web_viz.executor\": \"Run\",\r\n    \"Python.测试.executor\": \"Run\",\r\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\r\n    \"RunOnceActivity.git.unshallow\": \"true\",\r\n    \"git-widget-placeholder\": \"main\",\r\n    \"last_opened_file_path\": \"D:/PycharmProjects/PythonProject1\",\r\n    \"settings.editor.selected.configurable\": \"vcs.Git\"\r\n  }\r\n}]]></component>\r\n  <component name=\"RecentsManager\">\r\n    <key name=\"CopyFile.RECENT_KEYS\">\r\n      <recent name=\"D:\\PycharmProjects\\PythonProject1\" />\r\n      <recent name=\"D:\\PycharmProjects\\PythonProject1\\viz\" />\r\n    </key>\r\n  </component>\r\n  <component name=\"RunManager\">\r\n    <configuration name=\"breezy_slam_adapter\" type=\"PythonConfigurationType\" factoryName=\"Python\" temporary=\"true\" nameIsGenerated=\"true\">\r\n      <module name=\"maze_robot_project\" />\r\n      <option name=\"ENV_FILES\" value=\"\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"E:/OneDrive/文档/xwechat_files/wxid_02tq8nie0kio22_9a81/msg/file/2025-07\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"false\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"E:/OneDrive/文档/xwechat_files/wxid_02tq8nie0kio22_9a81/msg/file/2025-07/breezy_slam_adapter.py\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <recent_temporary>\r\n      <list>\r\n        <item itemvalue=\"Python.breezy_slam_adapter\" />\r\n      </list>\r\n    </recent_temporary>\r\n  </component>\r\n  <component name=\"SharedIndexes\">\r\n    <attachedChunks>\r\n      <set>\r\n        <option value=\"bundled-python-sdk-4f4e415b4190-aa17d162503b-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-243.26053.29\" />\r\n      </set>\r\n    </attachedChunks>\r\n  </component>\r\n  <component name=\"SpellCheckerSettings\" RuntimeDictionaries=\"0\" Folders=\"0\" CustomDictionaries=\"0\" DefaultDictionary=\"应用程序级\" UseSingleDictionary=\"true\" transferred=\"true\" />\r\n  <component name=\"TaskManager\">\r\n    <task active=\"true\" id=\"Default\" summary=\"默认任务\">\r\n      <changelist id=\"45e14498-f268-4c87-94ed-665d14b11296\" name=\"更改\" comment=\"\" />\r\n      <created>1751120701753</created>\r\n      <option name=\"number\" value=\"Default\" />\r\n      <option name=\"presentableId\" value=\"Default\" />\r\n      <updated>1751120701753</updated>\r\n    </task>\r\n    <servers />\r\n  </component>\r\n  <component name=\"Vcs.Log.Tabs.Properties\">\r\n    <option name=\"TAB_STATES\">\r\n      <map>\r\n        <entry key=\"MAIN\">\r\n          <value>\r\n            <State />\r\n          </value>\r\n        </entry>\r\n      </map>\r\n    </option>\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision 298ac29f37e3999bd2e2504354a68a98f8c62904)
++++ b/.idea/workspace.xml	(date 1751472187172)
+@@ -5,115 +5,10 @@
+   </component>
+   <component name="ChangeListManager">
+     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
+-      <change afterPath="$PROJECT_DIR$/breezy_slam.py" afterDir="false" />
+       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+       <change beforePath="$PROJECT_DIR$/config/map.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/map.py" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/exploration/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/exploration/test.py" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0282_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0283_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0284_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0285_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0286_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0287_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0288_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0289_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0290_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0291_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0292_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0293_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0294_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0295_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0296_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0297_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0298_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0299_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0300_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0301_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0302_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0303_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0304_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0305_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0306_viz.png" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_map.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_pose.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_trajectory.npy" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/output/keyframes/keyframe_0307_viz.png" beforeDir="false" />
+       <change beforePath="$PROJECT_DIR$/slam/slam.py" beforeDir="false" afterPath="$PROJECT_DIR$/slam/slam.py" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/viz/roboviz_slam_viz.py" beforeDir="false" afterPath="$PROJECT_DIR$/viz/roboviz_slam_viz.py" afterDir="false" />
+     </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+@@ -201,7 +96,7 @@
+     "Python.测试.executor": "Run",
+     "RunOnceActivity.ShowReadmeOnStart": "true",
+     "RunOnceActivity.git.unshallow": "true",
+-    "git-widget-placeholder": "main",
++    "git-widget-placeholder": "正在合并 main",
+     "last_opened_file_path": "D:/PycharmProjects/PythonProject1",
+     "settings.editor.selected.configurable": "vcs.Git"
+   }
