@@ -5,13 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/simulate_exploration_new.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/exploration/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/exploration/test.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/output/exploration_trajectory.npy" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_trajectory.npy" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/output/exploration_trajectory.txt" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_trajectory.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/output/trajectory_segments.json" beforeDir="false" afterPath="$PROJECT_DIR$/output/trajectory_segments.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/simulate_exploration.py" beforeDir="false" afterPath="$PROJECT_DIR$/simulate_exploration.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/slam/slam.py" beforeDir="false" afterPath="$PROJECT_DIR$/slam/slam.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -96,7 +90,7 @@
     "Python.测试.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "正在合并 main",
     "last_opened_file_path": "D:/PycharmProjects/PythonProject1",
     "settings.editor.selected.configurable": "vcs.Git"
   }

@@ -1,127 +1,119 @@
-"""
-此模块实现了 SLAMWrapper 类，用于集成 BreezySLAM 库，实现基于激光雷达数据和位姿变化的 SLAM 功能。
-提供地图更新、获取当前位姿和地图可视化等功能。
-"""
+import time
+import math
+import numpy as np
+import matplotlib.pyplot as plt
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.sensors import Laser
 from roboviz import MapVisualizer
 
-class SLAMWrapper:
-    """
-    封装 BreezySLAM 的 RMHC_SLAM 类，提供简单的接口用于更新 SLAM 状态、获取地图和当前位姿，以及可视化地图。
 
-    属性:
-        map_size_pixels (int): 地图的像素大小。
-        laser (Laser): 激光雷达对象。
-        slam (RMHC_SLAM): RMHC_SLAM 实例，用于执行 SLAM 算法。
-    """
-    def __init__(self, laser_params, map_size_pixels=500, map_size_meters=10):
-        """
-        初始化 SLAMWrapper 实例。
-
-        参数:
-            laser_params (dict): 激光雷达的参数，用于初始化 Laser 对象。
-            map_size_pixels (int, 可选): 地图的像素大小，默认为 500。
-            map_size_meters (int, 可选): 地图的实际大小（米），默认为 10。
-        """
-        self.map_size_pixels = map_size_pixels  # 保存地图尺寸
-        self.laser = Laser(**laser_params)
+class CarSLAM:
+    def __init__(self, map_size_pixels=500, map_size_meters=10, laser_params=None):
+        # 初始化激光模型（示例参数，需根据实际激光雷达调整）
+        self.laser = Laser(scan_size=360, scan_rate_hz=100, detection_angle_degrees=360,
+                           distance_no_detection_mm=10000, detection_margin=0, offset_mm=0)
+        # 初始化SLAM对象
         self.slam = RMHC_SLAM(self.laser, map_size_pixels, map_size_meters)
-        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'SLAM')
-        
-    def get_map(self):
-        """
-        获取当前的地图数据。
+        self.mapbytes = bytearray(map_size_pixels * map_size_pixels)
+        # 初始化可视化工具
+        self.viz = MapVisualizer(map_size_pixels, map_size_meters, 'Car SLAM Visualization')
 
-        返回:
-            bytearray: 当前地图的字节数组，大小为 map_size_pixels * map_size_pixels。
-        """
-        mapbytes = bytearray(self.map_size_pixels * self.map_size_pixels)
-        self.slam.getmap(mapbytes)
-        return mapbytes
-        
-    def update(self, scan_distances, pose_change):
-        """
-        根据激光雷达扫描数据和位姿变化更新 SLAM 状态。
+    def update_position(self, lidar_scan, pose_change, x, y, theta):
+        # 假设lidar_scan是当前激光雷达扫描数据（列表形式）
+        # 更新SLAM（传入里程计数据）
+        self.slam.update(lidar_scan, pose_change)
+        # 获取更精确的位置
+        x_mm, y_mm, theta_degrees = self.slam.getpos()
+        # 更新地图
+        self.slam.getmap(self.mapbytes)
+        # 显示地图和当前位置（转换为米）
+        self.viz.display(x_mm / 1000, y_mm / 1000, theta_degrees, self.mapbytes)
+        return x_mm, y_mm, theta_degrees
 
-        参数:
-            scan_distances (list): 激光雷达扫描距离列表，单位为毫米。
-            pose_change (tuple): 位姿变化元组，格式为 (dx_mm, dy_mm, dtheta_degrees, dt_seconds)。
-        """
-        dx_mm, dy_mm, dtheta_degrees, dt_seconds = pose_change
-        self.slam.update(scan_distances, (dx_mm, dy_mm, dtheta_degrees, dt_seconds))
-        
-    def get_position(self):
-        """
-        获取当前机器人的位姿。
+    def simulate_straight_line(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, distance_mm=18000,
+                               step_mm=100):
+        """在长方形场地内沿直线移动小车并更新SLAM地图"""
+        # 场地尺寸: 20米 x 10米 (20000毫米 x 10000毫米)
+        field_length_mm = 20000
+        field_width_mm = 10000
 
-        返回:
-            tuple: 当前位姿，格式为 (x_mm, y_mm, theta_degrees)，单位分别为毫米和度。
-        """
-        return self.slam.getpos()
-        
-    def print_progress(self, iteration):
-        """
-        打印当前 SLAM 处理的迭代次数。
+        # 确保起点在场地内
+        start_x_mm = max(1000, min(start_x_mm, field_length_mm - 1000))
+        start_y_mm = max(1000, min(start_y_mm, field_width_mm - 1000))
 
-        参数:
-            iteration (int): 当前的迭代次数。
-        """
-        print(f"SLAM处理中... 迭代次数: {iteration}")
-        
-    def visualize_map(self, map_data):
-        """
-        使用 roboviz 库可视化地图数据。
+        x = start_x_mm
+        y = start_y_mm
+        theta = start_theta_deg
+        x = start_x_mm
+        y = start_y_mm
+        theta = start_theta_deg
+        for _ in range(int(distance_mm / step_mm)):
+            x += step_mm * np.cos(np.deg2rad(theta))
+            y += step_mm * np.sin(np.deg2rad(theta))
+            lidar_scan = generate_square_lidar_scan(x, y, theta)
+            pose_change = (step_mm, 0, 0)  # 前进step_mm，无侧向移动，无旋转
+            self.update_position(lidar_scan, pose_change, x, y, theta)
+            time.sleep(0.1)
 
-        参数:
-            map_data (bytearray): 地图的字节数组数据。
-        """
-        x, y, theta = self.get_position()
-        return self.viz.display(x/1000., y/1000., theta, mapbytes=map_data)
+        # 延迟更新（保持可视化）
+        plt.pause(0.5)
 
 
-"""
+def generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, field_width_mm=10000, max_range_mm=10000):
+    """模拟长方形场地中的激光雷达扫描数据"""
+    scan = []
+    theta_rad = math.radians(theta_deg)
+    half_fov = math.radians(180)  # 假设激光雷达水平视场角为360度
+    step = 2 * half_fov / 359  # 360个扫描点
 
-下面是示例用法:
-"""
-    # 初始化激光雷达参数
-laser_params = {
-    'scan_size': 360,
-    'scan_rate_hz': 10,
-    'detection_angle_degrees': 240,
-    'distance_no_detection_mm': 4000
-}
+    for i in range(360):
+        angle = theta_rad - half_fov + i * step
+        dx = math.cos(angle)
+        dy = math.sin(angle)
 
-# 创建SLAM实例
-slam = SLAMWrapper(laser_params)
+        # 计算到长方形场地边界的距离
+        t = float('inf')
 
-# 模拟数据更新循环
-iteration = 0
-while True:
-    iteration += 1
-    # 获取激光雷达数据(模拟)
-    scan_distances = [1000] * 360  # 单位mm
+        # 左边界 (x=0)
+        if dx < 0:
+            t_left = (0 - x_mm) / dx
+            if t_left > 0:
+                y_intersect = y_mm + dy * t_left
+                if 0 <= y_intersect <= field_width_mm:
+                    t = min(t, t_left)
 
-    
-    # 获取IMU位姿变化(模拟)
-    pose_change = (10, 5, 1, 0.1)  # (dx_mm, dy_mm, dtheta_degrees, dt_seconds)
-    
-    # 更新SLAM
-    slam.update(scan_distances, pose_change)
-    
-    # 获取当前位姿
-    x, y, theta = slam.get_position()
-    
-    # 获取地图数据
-    map_data = slam.get_map()
-    
-    # 显示处理进度和结果
-    slam.print_progress(iteration)
-    print(f"当前位姿: x={x}mm, y={y}mm, θ={theta}°")
-    if not slam.visualize_map(map_data):
-        break
-    
-    # 控制输出频率
-    import time
-    time.sleep(0.001)
+        # 右边界 (x=field_length_mm)
+        if dx > 0:
+            t_right = (field_length_mm - x_mm) / dx
+            if t_right > 0:
+                y_intersect = y_mm + dy * t_right
+                if 0 <= y_intersect <= field_width_mm:
+                    t = min(t, t_right)
 
+        # 下边界 (y=0)
+        if dy < 0:
+            t_bottom = (0 - y_mm) / dy
+            if t_bottom > 0:
+                x_intersect = x_mm + dx * t_bottom
+                if 0 <= x_intersect <= field_length_mm:
+                    t = min(t, t_bottom)
+
+        # 上边界 (y=field_width_mm)
+        if dy > 0:
+            t_top = (field_width_mm - y_mm) / dy
+            if t_top > 0:
+                x_intersect = x_mm + dx * t_top
+                if 0 <= x_intersect <= field_length_mm:
+                    t = min(t, t_top)
+
+        distance = t if t != float('inf') else max_range_mm
+        scan.append(min(distance, max_range_mm))
+
+    return scan
+
+
+if __name__ == '__main__':
+    # 创建SLAM实例
+    slam = CarSLAM(map_size_pixels=800, map_size_meters=25)
+    # 开始直线探索模拟
+    slam.simulate_straight_line()
