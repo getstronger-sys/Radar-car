@@ -29,7 +29,7 @@ class CarSLAM:
         self.viz.display(x_mm/1000, y_mm/1000, theta_degrees, self.mapbytes)
         return x_mm, y_mm, theta_degrees
 
-    def simulate_straight_line(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, distance_mm=18000, step_mm=100):
+    def simulate_straight_line(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, distance_mm=8000, step_mm=100):
         """在长方形场地内沿直线移动小车并更新SLAM地图"""
         # 场地尺寸: 20米 x 10米 (20000毫米 x 10000毫米)
         field_length_mm = 20000
@@ -56,6 +56,42 @@ class CarSLAM:
         
         
         # 延迟更新（保持可视化）
+        plt.pause(0.5)
+
+    def simulate_curved_path(self, start_x_mm=1000, start_y_mm=5000, start_theta_deg=0, radius_mm=5000, angle_deg=90, step_mm=100):
+        """模拟小车沿圆弧路径运动"""
+        # 转换角度为弧度
+        angle_rad = math.radians(angle_deg)
+        start_theta_rad = math.radians(start_theta_deg)
+        
+        # 计算圆弧长度和步数
+        arc_length_mm = radius_mm * angle_rad
+        num_steps = max(1, int(arc_length_mm / step_mm))
+        
+        # 计算圆心位置（左转）
+        center_x = start_x_mm + radius_mm * math.cos(start_theta_rad + math.pi/2)
+        center_y = start_y_mm + radius_mm * math.sin(start_theta_rad + math.pi/2)
+        
+        x, y, theta = start_x_mm, start_y_mm, start_theta_deg
+        
+        for i in range(num_steps):
+            # 计算当前角度和位置
+            current_angle_rad = start_theta_rad + (i / num_steps) * angle_rad + math.pi/2
+            x = center_x - radius_mm * math.cos(current_angle_rad)
+            y = center_y - radius_mm * math.sin(current_angle_rad)
+            theta = start_theta_deg + (i / num_steps) * angle_deg
+            
+            # 生成激光扫描数据
+            lidar_scan = generate_square_lidar_scan(x, y, theta)
+            
+            # 计算步长和角度变化
+            delta_theta = angle_deg / num_steps
+            pose_change = (step_mm, delta_theta, 0)
+            
+            # 更新SLAM位置
+            self.update_position(lidar_scan, pose_change, x, y, theta)
+            time.sleep(0.1)
+        
         plt.pause(0.5)
 
 def generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, field_width_mm=10000, max_range_mm=10000):
@@ -116,6 +152,8 @@ if __name__ == '__main__':
     # 创建SLAM实例
     slam = CarSLAM(map_size_pixels=800, map_size_meters=25)
     # 开始直线探索模拟
-    slam.simulate_straight_line()
+    # 组合运动：直线 -> 转弯 -> 直线
+    slam.simulate_curved_path(radius_mm=3000, angle_deg=90)
+    slam.simulate_straight_line(distance_mm=800)
 
 
