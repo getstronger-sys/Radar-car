@@ -11,6 +11,9 @@ from enum import Enum
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.ndimage import distance_transform_edt
+
+from config.settings import MAP_RESOLUTION
 
 show_animation = True
 
@@ -257,6 +260,20 @@ def plot_robot(x, y, yaw, config):  # pragma: no cover
         plt.plot([x, out_x], [y, out_y], "-k")
 
 
+def safe_target_filter(known_map, candidate, min_safe_dist=2, resolution=MAP_RESOLUTION):
+    """
+    检查目标点是否离障碍物有安全距离
+    candidate: [x, y] 世界坐标
+    min_safe_dist: 距离障碍物的最小格数
+    """
+    occ = (known_map == 1)
+    dist_field = distance_transform_edt(~occ)
+    gx, gy = world_to_grid(candidate[0], candidate[1], resolution)
+    if 0 <= gx < known_map.shape[1] and 0 <= gy < known_map.shape[0]:
+        return dist_field[gy, gx] >= min_safe_dist
+    return False
+
+
 def main(gx=10.0, gy=10.0, robot_type=RobotType.circle):
     print(__file__ + " start!!")
     # initial state [x(m), y(m), yaw(rad), v(m/s), omega(rad/s)]
@@ -295,6 +312,20 @@ def main(gx=10.0, gy=10.0, robot_type=RobotType.circle):
         if dist_to_goal <= config.robot_radius:
             print("Goal!!")
             break
+
+        # 在主循环 target = explorer.get_next_target(...) 后加：
+        if target is not None and not safe_target_filter(known_map, target, min_safe_dist=2):
+            # 找所有前沿点，选一个安全距离最大的
+            frontiers = detect_frontiers(known_map, map_resolution=MAP_RESOLUTION)
+            occ = (known_map == 1)
+            dist_field = distance_transform_edt(~occ)
+            safe_frontiers = [f for f in frontiers if safe_target_filter(known_map, f, min_safe_dist=2)]
+            if safe_frontiers:
+                # 选距离障碍最远的前沿点
+                target = max(safe_frontiers, key=lambda f: dist_field[world_to_grid(f[0], f[1], MAP_RESOLUTION)[1], world_to_grid(f[0], f[1], MAP_RESOLUTION)[0]])
+                print(f'自动切换到更安全的目标点: {target}')
+            else:
+                print('没有足够安全的前沿点，继续原目标')
 
     print("Done")
     if show_animation:

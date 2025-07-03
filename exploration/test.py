@@ -206,7 +206,12 @@ def detect_frontiers_optimized(occupancy_grid, unknown_val=-1, free_threshold=0.
 
     dilated_unknown = binary_dilation(unknown_mask, structure=np.ones((3, 3)))
     frontiers_mask = free_mask & dilated_unknown
-    labeled, num_features = label(frontiers_mask)
+    label_result = label(frontiers_mask)
+    if isinstance(label_result, tuple):
+        labeled, num_features = label_result
+    else:
+        labeled = label_result
+        num_features = 0
 
     frontiers_world = []
 
@@ -375,132 +380,105 @@ class SimplifiedFrontierExplorer:
 
     def setup_visualization(self):
         """Setup simplified visualization with two windows"""
-        plt.style.use('dark_background')
+        plt.style.use('default')
         plt.ion()
 
         self.fig = plt.figure(figsize=(16, 10))
-        self.fig.patch.set_facecolor('#1e1e1e')
+        self.fig.patch.set_facecolor('#ffffff')
 
-        # Create custom grid layout - 2x2 instead of 2x3
         gs = self.fig.add_gridspec(2, 2, height_ratios=[3, 1], width_ratios=[1, 1],
                                    hspace=0.3, wspace=0.3)
 
-        # Main map displays - only two windows
-        self.ax1 = self.fig.add_subplot(gs[0, 0])  # Ground Truth
-        self.ax2 = self.fig.add_subplot(gs[0, 1])  # SLAM Mapping
-
-        # Status panel spans both columns
+        self.ax1 = self.fig.add_subplot(gs[0, 0])
+        self.ax2 = self.fig.add_subplot(gs[0, 1])
         self.ax_status = self.fig.add_subplot(gs[1, :])
         self.ax_status.axis('off')
 
-        # Set titles with modern styling
-        title_style = {'fontsize': 16, 'fontweight': 'bold', 'color': '#00ff88', 'pad': 20}
-        self.ax1.set_title('🌍 Ground Truth Environment', **title_style)
-        self.ax2.set_title('🗺️ SLAM Mapping & Exploration', **title_style)
+        # 更淡的标题色
+        title_style = {'fontsize': 16, 'fontweight': 'bold', 'color': '#7bbec9', 'pad': 20}
+        self.ax1.set_title('Ground Truth Environment', **title_style)
+        self.ax2.set_title('SLAM Mapping & Exploration', **title_style)
 
-        # Set background colors
+        # 更淡的坐标轴和背景
         for ax in [self.ax1, self.ax2]:
-            ax.set_facecolor('#2a2a2a')
-            ax.grid(True, alpha=0.3, color='#666666', linewidth=0.5)
-            ax.set_xlabel('X Position (m)', color='#cccccc', fontsize=12)
-            ax.set_ylabel('Y Position (m)', color='#cccccc', fontsize=12)
+            ax.set_facecolor('#f7fbfc')  # 更淡的蓝灰
+            ax.grid(True, alpha=0.18, color='#d0e3ef', linewidth=0.7)
+            ax.set_xlabel('X Position (m)', color='#7bbec9', fontsize=12)
+            ax.set_ylabel('Y Position (m)', color='#7bbec9', fontsize=12)
 
-        # Initialize map images with custom colormaps
-        self.true_map_img = self.ax1.imshow(self.true_map, cmap='binary', origin='lower', alpha=0.8)
-
-        # Custom colormap for SLAM map
-        slam_cmap = plt.get_cmap('RdYlGn_r')
+        # 地图配色更淡
+        self.true_map_img = self.ax1.imshow(self.true_map, cmap='Greys', origin='lower', alpha=0.7)
+        slam_cmap = plt.get_cmap('Blues')  # 更淡的蓝色渐变
         self.slam_map_img = self.ax2.imshow(self.slam_map, cmap=slam_cmap, origin='lower',
-                                            vmin=-1, vmax=1, alpha=0.9)
+                                            vmin=-1, vmax=1, alpha=0.75)
 
-        # Robot visualization with enhanced styling
-        robot_color = '#ff4444'
+        # 机器人配色更淡
+        robot_color = '#b2ebf2'  # 淡青色
+        robot_edge = '#4dd0e1'  # 更淡的青色
         robot_radius_grid = self.robot.radius / self.resolution
-        self.robot_true = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
-                                 edgecolor='white', zorder=10)
-        self.robot_slam = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.9, linewidth=2,
-                                 edgecolor='white', zorder=10)
-
+        self.robot_true = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.8, linewidth=2,
+                                 edgecolor=robot_edge, zorder=10)
+        self.robot_slam = Circle((0, 0), robot_radius_grid, color=robot_color, alpha=0.8, linewidth=2,
+                                 edgecolor=robot_edge, zorder=10)
         self.ax1.add_patch(self.robot_true)
         self.ax2.add_patch(self.robot_slam)
 
-        # Enhanced path visualization
-        self.path_line_true, = self.ax1.plot([], [], color='#00aaff', linewidth=3,
-                                             alpha=0.8, label='Robot Path', zorder=5)
-        self.path_line_slam, = self.ax2.plot([], [], color='#00aaff', linewidth=3,
-                                             alpha=0.8, label='Robot Path', zorder=5)
+        # 路径配色更淡
+        self.path_line_true, = self.ax1.plot([], [], color='#90caf9', linewidth=3,
+                                             alpha=0.7, label='Robot Path', zorder=5)
+        self.path_line_slam, = self.ax2.plot([], [], color='#90caf9', linewidth=3,
+                                             alpha=0.7, label='Robot Path', zorder=5)
 
-        # Frontier and target visualization (only on SLAM map)
-        self.frontier_points, = self.ax2.plot([], [], 'o', color='#00ff88', markersize=10,
-                                              alpha=0.9, label='Frontier Points', zorder=8)
-
-        self.target_point, = self.ax2.plot([], [], '*', color='#ffff00', markersize=8,
+        # 前沿点、目标点、规划路径更淡
+        self.frontier_points, = self.ax2.plot([], [], 'o', color='#aed581', markersize=10,
+                                              alpha=0.7, label='Frontier Points', zorder=8)
+        self.target_point, = self.ax2.plot([], [], '*', color='#ffe082', markersize=12,
                                            label='Current Target', zorder=9)
+        self.planned_path, = self.ax2.plot([], [], '--', color='#ffccbc', linewidth=4,
+                                           alpha=0.7, label='Planned Path', zorder=7)
 
-        # Planned path visualization (only on SLAM map)
-        self.planned_path, = self.ax2.plot([], [], '--', color='#ff8800', linewidth=4,
-                                           alpha=0.8, label='Planned Path', zorder=7)
+        # LiDAR 扫描点更淡
+        self.scan_points, = self.ax1.plot([], [], '.', color='#fff9c4', markersize=2.5,
+                                          alpha=0.7, label='LiDAR Scan', zorder=3)
 
-        # LiDAR scan visualization (only on ground truth)
-        self.scan_points, = self.ax1.plot([], [], '.', color='#ffff44', markersize=2,
-                                          alpha=0.8, label='LiDAR Scan', zorder=3)
-
-        # Enhanced legends
-        legend_style = {'fancybox': True, 'framealpha': 0.9, 'facecolor': '#2a2a2a',
-                        'edgecolor': '#666666', 'fontsize': 10}
+        # 图例更淡
+        legend_style = {'fancybox': True, 'framealpha': 0.7, 'facecolor': '#f7fbfc',
+                        'edgecolor': '#d0e3ef', 'fontsize': 10}
         self.ax1.legend(loc='upper right', **legend_style)
         self.ax2.legend(loc='upper right', **legend_style)
 
-        # Set axis limits and styling
         for ax in [self.ax1, self.ax2]:
             ax.set_xlim(0, self.true_map.shape[1])
             ax.set_ylim(0, self.true_map.shape[0])
-            ax.tick_params(colors='#cccccc', labelsize=10)
+            ax.tick_params(colors='#7bbec9', labelsize=10)
 
-        # Initialize arrow placeholders
         self.robot_arrow_true = None
         self.robot_arrow_slam = None
-
-        # Status display setup
         self.setup_status_display()
 
     def setup_status_display(self):
-        """Setup enhanced status display panel"""
-        # Create status text areas
         self.status_texts = {}
-
-        # Main status line
         self.main_status = self.ax_status.text(0.5, 0.8, '', ha='center', va='center',
-                                               fontsize=18, fontweight='bold', color='#00ff88',
+                                               fontsize=18, fontweight='bold', color='#7bbec9',
                                                transform=self.ax_status.transAxes)
-
-        # Statistics grid
         stats_x_positions = [0.1, 0.3, 0.5, 0.7, 0.9]
         stats_labels = ['Steps', 'Position', 'Frontiers', 'Unknown', 'Time']
         self.stats_labels = []
         self.stats_values = []
-
         for i, (x_pos, label) in enumerate(zip(stats_x_positions, stats_labels)):
-            # Label
             label_text = self.ax_status.text(x_pos, 0.5, label, ha='center', va='top',
-                                             fontsize=12, fontweight='bold', color='#cccccc',
+                                             fontsize=12, fontweight='bold', color='#7bbec9',
                                              transform=self.ax_status.transAxes)
             self.stats_labels.append(label_text)
-
-            # Value
             value_text = self.ax_status.text(x_pos, 0.2, '---', ha='center', va='top',
-                                             fontsize=14, fontweight='bold', color='#ffffff',
+                                             fontsize=14, fontweight='bold', color='#90caf9',
                                              transform=self.ax_status.transAxes)
             self.stats_values.append(value_text)
-
-        # Progress bar background
         self.progress_bg = Rectangle((0.05, 0.05), 0.9, 0.1, transform=self.ax_status.transAxes,
-                                     facecolor='#444444', edgecolor='#666666', linewidth=1)
+                                     facecolor='#e3f2fd', edgecolor='#d0e3ef', linewidth=1)
         self.ax_status.add_patch(self.progress_bg)
-
-        # Progress bar
         self.progress_bar = Rectangle((0.05, 0.05), 0.0, 0.1, transform=self.ax_status.transAxes,
-                                      facecolor='#00ff88', alpha=0.8)
+                                      facecolor='#aed581', alpha=0.7)
         self.ax_status.add_patch(self.progress_bar)
 
     def update_slam_map(self, lidar_scan):
@@ -671,26 +649,37 @@ class SimplifiedFrontierExplorer:
             self.robot_arrow_slam.remove()
 
         # Add new arrows
-        arrow_length = float(self.robot.radius) / float(self.resolution) * 2.0  # 箭头长度为小车半径的2倍（单位：格）
+        arrow_length = float(self.robot.radius) / float(self.resolution) * 2.0
         dx = float(arrow_length * math.cos(self.robot.theta))
         dy = float(arrow_length * math.sin(self.robot.theta))
 
         # 让箭头头部宽度和长度也随箭头长度缩放
-        head_width = float(arrow_length * 0.5)   # 你可以调节这个系数
-        head_length = float(arrow_length * 0.4)  # 你可以调节这个系数
+        head_width = float(arrow_length * 0.5)
+        head_length = float(arrow_length * 0.4)
 
-        arrow_style = dict(
+        # 只传递FancyArrow支持的参数
+        self.robot_arrow_true = FancyArrow(
+            float(robot_x_grid), float(robot_y_grid), dx, dy,
+            width=0.05,
             head_width=head_width,
             head_length=head_length,
-            fc='#ffffff',
-            ec='#ffffff',
+            fc='#004d40',
+            ec='#004d40',
             linewidth=2.0,
-            alpha=0.9,
+            alpha=0.92,
             zorder=15
         )
-
-        self.robot_arrow_true = FancyArrow(float(robot_x_grid), float(robot_y_grid), dx, dy, width=0.05, **arrow_style)
-        self.robot_arrow_slam = FancyArrow(float(robot_x_grid), float(robot_y_grid), dx, dy, width=0.05, **arrow_style)
+        self.robot_arrow_slam = FancyArrow(
+            float(robot_x_grid), float(robot_y_grid), dx, dy,
+            width=0.05,
+            head_width=head_width,
+            head_length=head_length,
+            fc='#004d40',
+            ec='#004d40',
+            linewidth=2.0,
+            alpha=0.92,
+            zorder=15
+        )
 
         self.ax1.add_patch(self.robot_arrow_true)
         self.ax2.add_patch(self.robot_arrow_slam)
@@ -738,13 +727,13 @@ class SimplifiedFrontierExplorer:
         unknown_ratio = np.sum(self.slam_map == -1) / self.slam_map.size
 
         if self.exploration_complete:
-            status = "🎉 EXPLORATION COMPLETE!"
+            status = "EXPLORATION COMPLETE!"
             self.main_status.set_color('#00ff88')
         elif self.current_target:
-            status = "🎯 ACTIVELY EXPLORING"
+            status = "ACTIVELY EXPLORING"
             self.main_status.set_color('#ffff00')
         else:
-            status = "🔍 SEARCHING FOR TARGETS"
+            status = "SEARCHING FOR TARGETS"
             self.main_status.set_color('#ff8800')
 
         self.main_status.set_text(status)
@@ -779,7 +768,7 @@ class SimplifiedFrontierExplorer:
 
         robot_pos = (self.robot.x, self.robot.y, self.robot.theta)
         lidar_scan = self.lidar_sim.scan(robot_pos, self.true_map, self.resolution)
-        lidar_scan.timestamp = self.timestamp
+        lidar_scan.timestamp = int(self.timestamp)
         self.lidar_data.append(lidar_scan)
 
         odom = Odometry(self.robot.x, self.robot.y, self.robot.theta, self.timestamp)

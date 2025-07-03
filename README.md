@@ -69,7 +69,9 @@ python main.py
 
 #### 可视化脚本示例
 可用matplotlib等工具直接可视化txt/map/png/json等数据，或自定义脚本叠加轨迹、障碍物等。
-
+```bash
+streamlit run planner/web_viz.py
+```
 ---
 
 ## 全局起点和终点设置

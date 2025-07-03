@@ -6,8 +6,9 @@ from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
 from scipy.ndimage import binary_dilation
 import matplotlib
+
 matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans', 'SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
-matplotlib.rcParams['axes.unicode_minus'] = False   # 解决负号显示问题
+matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.map import get_global_map, MAP_SIZE_M, MAP_RESOLUTION
@@ -17,11 +18,13 @@ from PythonRobotics.PathPlanning.DynamicWindowApproach.dynamic_window_approach i
     dwa_control, Config as DWAConfig, motion as dwa_motion
 )
 
+
 def align_to_grid_center(pos, resolution):
     return {
         'x': (int(pos['x'] / resolution) + 0.5) * resolution,
         'y': (int(pos['y'] / resolution) + 0.5) * resolution
     }
+
 
 def is_path_blocked(robot_state, target, grid_map, resolution):
     # 判断机器人到目标点的直线路径上是否有障碍物
@@ -32,6 +35,7 @@ def is_path_blocked(robot_state, target, grid_map, resolution):
         if grid_map[y, x] == 1:
             return True
     return False
+
 
 def bresenham(x0, y0, x1, y1):
     # Bresenham整数直线算法
@@ -62,6 +66,7 @@ def bresenham(x0, y0, x1, y1):
     points.append((x1, y1))
     return points
 
+
 def simple_goto_control(robot_state, target, max_v=0.6, w_gain=2.5):
     dx = target[0] - robot_state[0]
     dy = target[1] - robot_state[1]
@@ -72,6 +77,7 @@ def simple_goto_control(robot_state, target, max_v=0.6, w_gain=2.5):
     angle_diff = np.arctan2(np.sin(target_theta - yaw), np.cos(target_theta - yaw))
     w = w_gain * angle_diff
     return np.array([v, w])
+
 
 def run_astar_follow_with_dwa(grid_map, start, goal, max_iterations=1200, goal_threshold=0.18):
     raw_path = plan_path_simple(grid_map, start, goal, MAP_RESOLUTION)
@@ -133,6 +139,7 @@ def run_astar_follow_with_dwa(grid_map, start, goal, max_iterations=1200, goal_t
             path_idx += 1
     return robot_states, control_history, path
 
+
 # 其余可视化和主程序部分保持不变
 if __name__ == "__main__":
     grid_map = get_global_map()
@@ -150,10 +157,14 @@ if __name__ == "__main__":
         dilated_grid_map = binary_dilation(grid_map == 1, structure=structure).astype(np.uint8)
     else:
         dilated_grid_map = grid_map.copy()
+
+
     def is_free(pos, grid_map, resolution):
         gx = int(pos['x'] / resolution)
         gy = int(pos['y'] / resolution)
         return grid_map[gy, gx] == 0
+
+
     if not is_free(start, dilated_grid_map, resolution):
         raise ValueError("起点在障碍物内，请选择空地作为起点！")
     if not is_free(goal, dilated_grid_map, resolution):
@@ -161,15 +172,19 @@ if __name__ == "__main__":
     robot_states, control_history, path = run_astar_follow_with_dwa(dilated_grid_map, start, goal)
     if robot_states:
         from matplotlib import pyplot as plt
+
+
         def plot_astar_dwa(grid_map, grid_map_orig, start, goal, path, robot_states):
             fig, ax = plt.subplots(figsize=(12, 10))
             ax.imshow(grid_map, cmap='Greys', origin='lower', extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
             # 原始障碍物
             obs_y, obs_x = np.where((grid_map == 1) & (grid_map_orig == 1))
-            ax.scatter(obs_x * resolution + resolution / 2, obs_y * resolution + resolution / 2, c='k', s=10, label='Obstacles', alpha=0.7)
+            ax.scatter(obs_x * resolution + resolution / 2, obs_y * resolution + resolution / 2, c='k', s=10,
+                       label='Obstacles', alpha=0.7)
             # 膨胀障碍物
             dil_y, dil_x = np.where((grid_map == 1) & (grid_map_orig == 0))
-            ax.scatter(dil_x * resolution + resolution / 2, dil_y * resolution + resolution / 2, c='#39FF14', s=10, label='Inflated Obstacles', alpha=0.7)
+            ax.scatter(dil_x * resolution + resolution / 2, dil_y * resolution + resolution / 2, c='#39FF14', s=10,
+                       label='Inflated Obstacles', alpha=0.7)
             ax.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
             ax.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*', label='Goal')
             if path:
@@ -188,26 +203,33 @@ if __name__ == "__main__":
             ax.grid(True, alpha=0.3)
             plt.tight_layout()
             plt.show()
+
+
         plot_astar_dwa(dilated_grid_map, grid_map_orig, start, goal, path, robot_states)
+
+
         def animate_astar_dwa(grid_map, grid_map_orig, start, goal, path, robot_states, control_history):
             fig, ax = plt.subplots(figsize=(10, 8))
+
             def animate(frame):
                 ax.clear()
                 ax.imshow(grid_map, cmap='Greys', origin='lower', extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
                 # 原始障碍物
                 obs_y, obs_x = np.where((grid_map == 1) & (grid_map_orig == 1))
-                ax.scatter(obs_x * resolution + resolution / 2, obs_y * resolution + resolution / 2, c='k', s=10, alpha=0.7)
+                ax.scatter(obs_x * resolution + resolution / 2, obs_y * resolution + resolution / 2, c='k', s=10,
+                           alpha=0.7)
                 # 膨胀障碍物
                 dil_y, dil_x = np.where((grid_map == 1) & (grid_map_orig == 0))
-                ax.scatter(dil_x * resolution + resolution / 2, dil_y * resolution + resolution / 2, c='#39FF14', s=10, alpha=0.7)
+                ax.scatter(dil_x * resolution + resolution / 2, dil_y * resolution + resolution / 2, c='#39FF14', s=10,
+                           alpha=0.7)
                 ax.scatter([start['x']], [start['y']], c='g', s=100, marker='o')
                 ax.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*')
                 if path:
                     px, py = zip(*path)
                     ax.plot(px, py, 'b-', linewidth=2, alpha=0.7)
                 if frame < len(robot_states):
-                    traj_x = [state[0] for state in robot_states[:frame+1]]
-                    traj_y = [state[1] for state in robot_states[:frame+1]]
+                    traj_x = [state[0] for state in robot_states[:frame + 1]]
+                    traj_y = [state[1] for state in robot_states[:frame + 1]]
                     ax.plot(traj_x, traj_y, 'm-', linewidth=3)
                     current_state = robot_states[frame]
                     x, y, theta = current_state[:3]
@@ -224,7 +246,7 @@ if __name__ == "__main__":
                         v, omega = 0.0, 0.0
                     # 加速度
                     if frame > 0 and frame < len(control_history):
-                        v_prev, _ = control_history[frame-1]
+                        v_prev, _ = control_history[frame - 1]
                         accel = (v - v_prev) / 0.1
                     else:
                         accel = 0.0
@@ -246,11 +268,12 @@ if __name__ == "__main__":
                 ax.set_title(f'A*+DWA animation - Frame {frame}')
                 ax.grid(True, alpha=0.3)
                 return ax.get_children()
+
             anim = FuncAnimation(fig, animate, frames=len(robot_states), interval=100, repeat=True, blit=False)
             plt.show()
             return anim
+
+
         animate_astar_dwa(dilated_grid_map, grid_map_orig, start, goal, path, robot_states, control_history)
     else:
         print("❌ 仿真失败，无法可视化")
-
-        
