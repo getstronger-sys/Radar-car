@@ -2,16 +2,24 @@ import time
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+import os
+
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from breezyslam.algorithms import RMHC_SLAM
 from breezyslam.sensors import Laser
 from roboviz import MapVisualizer
 from config.map import get_global_map
-from config.settings import START_POSITION, EXIT_POSITION, MAP_RESOLUTION
+from config.settings import START_POSITION, EXIT_POSITION, MAP_RESOLUTION, LOOP_DELAY
 import heapq
 from exploration.frontier_detect import ExplorationManager, world_to_grid, grid_to_world, is_exploration_complete, \
     detect_frontiers
 from matplotlib.patches import Circle
 import matplotlib
+from slam.motor_deviation_correction import apply_motor_deviation_correction
+
 matplotlib.rcParams['font.sans-serif'] = ['SimHei']  # 支持中文
 matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['toolbar'] = 'None'
@@ -148,7 +156,7 @@ def generate_square_lidar_scan(x_mm, y_mm, theta_deg, field_length_mm=20000, fie
 
 def generate_lidar_scan_from_gridmap(x_mm, y_mm, theta_deg, grid_map, map_resolution, max_range_mm=4000, scan_size=360):
     """
-    基于栅格地图的激光雷达模拟。
+    基于栅格地图的激光雷达模拟（使用精确的射线追踪算法，确保不穿墙）。
     x_mm, y_mm: 机器人位置（毫米）
     theta_deg: 机器人朝向（度）
     grid_map: 2D numpy array，障碍物为1
@@ -161,31 +169,91 @@ def generate_lidar_scan_from_gridmap(x_mm, y_mm, theta_deg, grid_map, map_resolu
     map_h, map_w = grid_map.shape
     x0 = x_mm / 1000 / map_resolution  # 转为格子坐标
     y0 = y_mm / 1000 / map_resolution
+    theta_rad = math.radians(theta_deg)
+
     for i in range(scan_size):
-        angle = math.radians(theta_deg) + 2 * math.pi * i / scan_size
+        angle = theta_rad + 2 * math.pi * i / scan_size
         dx = math.cos(angle)
         dy = math.sin(angle)
-        # DDA/Bresenham
-        for r in range(1, int(max_range_mm / (map_resolution * 1000))):
-            x = x0 + dx * r
-            y = y0 + dy * r
-            xi, yi = int(round(x)), int(round(y))
-            if xi < 0 or xi >= map_w or yi < 0 or yi >= map_h:
-                distance = r * map_resolution * 1000
-                break
-            if grid_map[yi, xi] == 1:
-                distance = r * map_resolution * 1000
-                break
+
+        # 使用DDA算法进行精确的射线追踪
+        distance = max_range_mm  # 默认最大距离
+
+        # 计算射线与地图边界的交点
+        # 计算射线参数 t，使得射线上的点 (x0 + t*dx, y0 + t*dy) 在地图边界上
+        t_values = []
+
+        # 左边界 x = 0
+        if abs(dx) > 1e-6:  # 避免除零
+            t = -x0 / dx
+            if t > 0:
+                y_intersect = y0 + t * dy
+                if 0 <= y_intersect < map_h:
+                    t_values.append(t)
+
+        # 右边界 x = map_w - 1
+        if abs(dx) > 1e-6:
+            t = (map_w - 1 - x0) / dx
+            if t > 0:
+                y_intersect = y0 + t * dy
+                if 0 <= y_intersect < map_h:
+                    t_values.append(t)
+
+        # 下边界 y = 0
+        if abs(dy) > 1e-6:
+            t = -y0 / dy
+            if t > 0:
+                x_intersect = x0 + t * dx
+                if 0 <= x_intersect < map_w:
+                    t_values.append(t)
+
+        # 上边界 y = map_h - 1
+        if abs(dy) > 1e-6:
+            t = (map_h - 1 - y0) / dy
+            if t > 0:
+                x_intersect = x0 + t * dx
+                if 0 <= x_intersect < map_w:
+                    t_values.append(t)
+
+        # 找到最近的边界交点
+        if t_values:
+            max_t = min(t_values)
         else:
-            distance = max_range_mm
+            max_t = float('inf')
+
+        # 限制最大探测距离
+        max_range_grid = max_range_mm / (map_resolution * 1000)
+        max_t = min(max_t, max_range_grid)
+
+        # 沿着射线逐步检查每个格子
+        step_size = min(1.0, map_resolution / 100)  # 步长，确保不会跳过格子
+        for t in np.arange(0, max_t, step_size):
+            x = x0 + t * dx
+            y = y0 + t * dy
+            xi, yi = int(x), int(y)
+
+            # 检查是否超出地图边界
+            if xi < 0 or xi >= map_w or yi < 0 or yi >= map_h:
+                distance = t * map_resolution * 1000
+                break
+
+            # 检查是否遇到障碍物
+            if grid_map[yi, xi] == 1:
+                distance = t * map_resolution * 1000
+                break
+
         scan.append(distance)
+
     return scan
 
 
 # ========== 常量定义 ==========
-LIDAR_ANGLE_RES = 1  # 每1度一束激光，360束
-LIDAR_NUM = 360
-LIDAR_MAX_DIST = 20.0  # 激光最大探测距离（米，可根据需要调整）
+LIDAR_ANGLE_RES = 2  # 每2度一束激光，180束（与simulate_exploration.py保持一致）
+LIDAR_NUM = 360 // LIDAR_ANGLE_RES  # 激光束总数：360度除以角度分辨率
+LIDAR_MAX_DIST = 20.0  # 激光最大探测距离（米，与simulate_exploration.py保持一致）
+
+# BreezySLAM 需要360个扫描点，所以我们需要保持360个点
+SLAM_LIDAR_NUM = 360  # SLAM使用的激光束数
 
 
 # ========== A* 路径规划 ==========
@@ -220,23 +288,43 @@ def astar(start, goal, occ_map, map_resolution, map_size):
 
 # ========== 地图更新 ==========
 def update_known_map(pos, scan, known_map, robot_theta, map_resolution, lidar_angle_res, lidar_max_dist):
+    """
+    根据激光雷达扫描结果更新已知地图（仿照simulate_exploration.py的逻辑）
+
+    参数:
+    pos: 机器人当前位置
+    scan: 激光雷达扫描结果
+    known_map: 当前已知地图（将被更新）
+    robot_theta: 机器人朝向
+    map_resolution: 地图分辨率
+    lidar_angle_res: 激光雷达角度分辨率
+    lidar_max_dist: 激光雷达最大探测距离
+    """
     for i, dist in enumerate(scan):
-        angle = np.deg2rad(i * lidar_angle_res)
-        a = robot_theta + angle
+        angle = np.deg2rad(i * lidar_angle_res)  # 计算激光束角度
+        a = robot_theta + angle  # 计算绝对角度
+
+        # 更新激光束路径上的空闲区域
         for r in np.arange(0, min(dist, lidar_max_dist), map_resolution / 2):
             x = pos[0] + r * np.cos(a)
             y = pos[1] + r * np.sin(a)
             gx, gy = world_to_grid(x, y, map_resolution)
+
+            # 检查坐标是否在地图范围内
             if gx < 0 or gx >= known_map.shape[1] or gy < 0 or gy >= known_map.shape[0]:
                 break
+
+            # 如果该区域之前未知，标记为空地
             if known_map[gy, gx] == -1:
-                known_map[gy, gx] = 0
+                known_map[gy, gx] = 0  # 标记为空地
+
+        # 标记障碍物位置
         if dist < lidar_max_dist:
             x = pos[0] + dist * np.cos(a)
             y = pos[1] + dist * np.sin(a)
             gx, gy = world_to_grid(x, y, map_resolution)
-            if 0 <= gx < known_map.shape[1] and 0 <= gy < known_map.shape[0]:
-                known_map[gy, gx] = 1
+            if 0 <= gx <= known_map.shape[1] and 0 <= gy <= known_map.shape[0]:
+                known_map[gy, gx] = 1  # 标记为障碍物
 
 
 def is_frontier(known_map, gx, gy):
@@ -285,13 +373,18 @@ if __name__ == '__main__':
         step_size = 0.1  # 每次前进0.1米
         turn_step = np.deg2rad(5)  # 每次最多转5度
         while True:
-            # 1. 用真实地图模拟激光
+            # 1. 用真实地图模拟激光（使用与simulate_exploration.py一致的参数）
             scan_mm = generate_lidar_scan_from_gridmap(
                 robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
                 true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
             scan = np.array(scan_mm) / 1000.0  # 转为米
             # 2. 更新已知地图
             update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES, LIDAR_MAX_DIST)
+
+            # 为SLAM生成360个点的扫描数据
+            scan_mm_slam = generate_lidar_scan_from_gridmap(
+                robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+                true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=SLAM_LIDAR_NUM)
             # 3. 探索逻辑
             # 获取所有frontier点
             frontiers = detect_frontiers(known_map, unknown_val=-1, free_threshold=0.2, map_resolution=MAP_RESOLUTION)
@@ -321,14 +414,17 @@ if __name__ == '__main__':
                 show_map[show_map == -1] = 0.5
                 ax1.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
                 # 轨迹和小车位置用世界坐标
-                ax1.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
+                ax1.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory],
+                         'g.-', linewidth=2)
                 ax1.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
                 if target is not None:
                     ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
-                    ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y', markersize=18)
+                    ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y',
+                             markersize=18)
                 ax1.set_xlim(0, MAP_SIZE)
                 ax1.set_ylim(0, MAP_SIZE)
-                circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION), radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+                circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION),
+                                radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
                 ax1.add_patch(circle)
                 ax1.set_title('真实地图/轨迹/目标/小车')
                 # 右侧：SLAM建图
@@ -345,28 +441,62 @@ if __name__ == '__main__':
             # === 平滑运动到下一个A*点 ===
             for i in range(1, len(path)):
                 target_pos = np.array(path[i])
+
+                # 碰撞检测：检查目标位置是否与障碍物碰撞
+                gx, gy = world_to_grid(target_pos[0], target_pos[1], MAP_RESOLUTION)
+                if true_map[gy, gx] == 1:
+                    print(f'目标位置 {target_pos} 与障碍物碰撞，跳过')
+                    continue
+
                 while True:
                     delta = target_pos - robot_pos
                     dist = np.linalg.norm(delta)
                     target_theta = np.arctan2(delta[1], delta[0])
                     dtheta = target_theta - robot_theta
                     dtheta = (dtheta + np.pi) % (2 * np.pi) - np.pi
+
                     if abs(dtheta) > 1e-2:
+                        # 转向
                         turn = np.clip(dtheta, -turn_step, turn_step)
                         robot_theta += turn
+                        # 电机偏差补偿：转向时线速度为0，角速度为turn/LOOP_DELAY
+                        linear_v = 0.0
+                        angular_v = turn / LOOP_DELAY
+                        v_l_corr, v_r_corr = apply_motor_deviation_correction(linear_v, angular_v)
+                        # 可在此处输出/记录v_l_corr, v_r_corr
                         pose_change = (0, turn, 0)
                     else:
+                        # 前进
                         move = min(step_size, dist)
-                        robot_pos += move * np.array([np.cos(robot_theta), np.sin(robot_theta)])
+                        new_pos = robot_pos + move * np.array([np.cos(robot_theta), np.sin(robot_theta)])
+
+                        # 碰撞检测：检查新位置是否与障碍物碰撞
+                        gx, gy = world_to_grid(new_pos[0], new_pos[1], MAP_RESOLUTION)
+                        if true_map[gy, gx] == 1:
+                            print(f'新位置 {new_pos} 与障碍物碰撞，停止移动')
+                            break
+
+                        robot_pos = new_pos
+                        # 电机偏差补偿：前进时角速度为0，线速度为move/LOOP_DELAY
+                        linear_v = move / LOOP_DELAY
+                        angular_v = 0.0
+                        v_l_corr, v_r_corr = apply_motor_deviation_correction(linear_v, angular_v)
+                        # 可在此处输出/记录v_l_corr, v_r_corr
                         pose_change = (move * 1000, 0, 0)
-                    # 激光模拟
+
+                    # 激光模拟（使用与simulate_exploration.py一致的参数）
                     scan_mm = generate_lidar_scan_from_gridmap(
                         robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
                         true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=LIDAR_NUM)
                     scan = np.array(scan_mm) / 1000.0
                     update_known_map(robot_pos, scan, known_map, robot_theta, MAP_RESOLUTION, LIDAR_ANGLE_RES,
                                      LIDAR_MAX_DIST)
-                    slam.update_position(scan_mm, pose_change, robot_pos[0] * 1000, robot_pos[1] * 1000,
+
+                    # 为SLAM生成360个点的扫描数据
+                    scan_mm_slam = generate_lidar_scan_from_gridmap(
+                        robot_pos[0] * 1000, robot_pos[1] * 1000, np.rad2deg(robot_theta),
+                        true_map, MAP_RESOLUTION, max_range_mm=int(LIDAR_MAX_DIST * 1000), scan_size=SLAM_LIDAR_NUM)
+                    slam.update_position(scan_mm_slam, pose_change, robot_pos[0] * 1000, robot_pos[1] * 1000,
                                          np.rad2deg(robot_theta))
                     trajectory.append(robot_pos.copy())
                     # 可视化
@@ -377,19 +507,23 @@ if __name__ == '__main__':
                     show_map[show_map == -1] = 0.5
                     ax1.imshow(show_map, cmap='Blues', alpha=0.5, origin='lower')
                     # 轨迹和小车位置用世界坐标
-                    ax1.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory], 'g.-', linewidth=2)
+                    ax1.plot([p[0] / MAP_RESOLUTION for p in trajectory], [p[1] / MAP_RESOLUTION for p in trajectory],
+                             'g.-', linewidth=2)
                     ax1.plot(robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION, 'ro', markersize=8)
                     if target is not None:
                         ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, 'yx', markersize=12)
-                        ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y', markersize=18)
+                        ax1.plot(target[0] / MAP_RESOLUTION, target[1] / MAP_RESOLUTION, marker='*', color='y',
+                                 markersize=18)
                     ax1.set_xlim(0, MAP_SIZE)
                     ax1.set_ylim(0, MAP_SIZE)
-                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION), radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
+                    circle = Circle((robot_pos[0] / MAP_RESOLUTION, robot_pos[1] / MAP_RESOLUTION),
+                                    radius=ROBOT_RADIUS / MAP_RESOLUTION, fill=False, color='r', linestyle='--')
                     ax1.add_patch(circle)
                     ax1.set_title('真实地图/轨迹/目标/小车')
                     # 右侧：SLAM建图
                     ax2.clear()
-                    slam_map = np.array(slam.mapbytes, dtype=np.uint8).reshape(slam.map_size_pixels, slam.map_size_pixels)
+                    slam_map = np.array(slam.mapbytes, dtype=np.uint8).reshape(slam.map_size_pixels,
+                                                                               slam.map_size_pixels)
                     ax2.imshow(slam_map, cmap='gray', origin='lower')
                     # SLAM估计的位置
                     x_mm, y_mm, theta_deg = slam.slam.getpos()
@@ -403,27 +537,6 @@ if __name__ == '__main__':
                 # 你可以在这里加Graph SLAM节点和边的采样逻辑
         plt.ioff()
         plt.show()
-        # 居中窗口（仅限TkAgg后端）
-        try:
-            if matplotlib.get_backend() == 'TkAgg':
-                plt.draw()
-                fig = plt.gcf()
-                mgr = plt.get_current_fig_manager()
-                # 获取屏幕尺寸
-                import tkinter as tk
-                root = tk.Tk()
-                screen_w = root.winfo_screenwidth()
-                screen_h = root.winfo_screenheight()
-                root.destroy()
-                # 获取窗口尺寸
-                w, h = fig.get_size_inches() * fig.dpi
-                w, h = int(w), int(h)
-                # 计算居中位置
-                x = (screen_w - w) // 2
-                y = (screen_h - h) // 2
-                mgr.window.wm_geometry(f"{w}x{h}+{x}+{y}")
-        except Exception as e:
-            print('窗口居中失败:', e)
         input('按回车退出...')
     except Exception as e:
         import traceback

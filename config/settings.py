@@ -31,6 +31,10 @@ LIDAR_MAX_DISTANCE = 4000  # 毫米
 BLUETOOTH_PORT = 'COM4'
 BLUETOOTH_BAUDRATE = 115200
 
+# 电机偏差校正参数
+MOTOR_LEFT_CORRECTION = 1.0  # 左电机校正系数，>1表示左轮偏慢
+MOTOR_RIGHT_CORRECTION = 1.0  # 右电机校正系数，>1表示右轮偏慢
+
 DWA_CONFIG = {
     'robot_radius': ROBOT_RADIUS,
     'map_resolution': MAP_RESOLUTION,

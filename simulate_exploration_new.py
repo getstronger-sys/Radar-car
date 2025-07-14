@@ -821,6 +821,8 @@ visualizer = SLAMMapVisualizer(ax_slam, known_map, MAP_RESOLUTION, robot_radius=
 
 mplcursors_inited = False
 
+VISUALIZE_EVERY_N_STEPS = 20
+
 while True:
     # 1. 模拟激光雷达扫描
     scan = simulate_lidar(robot_pos, robot_theta, true_map)
@@ -967,7 +969,7 @@ while True:
         # path = ...  # 你主循环里A*算出来的路径
 
         # --- 并排更新两个窗口 ---
-        if step % 10 == 0:  # 进一步减少可视化更新频率，提高运行速度
+        if step % VISUALIZE_EVERY_N_STEPS == 0:
             plot_map(
                 true_map, known_map, robot_pos, trajectory, target,
                 scan=scan, robot_theta=robot_theta, return_path=return_path,
@@ -984,27 +986,28 @@ while True:
                     )
                 )
                 mplcursors_inited = True
-        visualizer.update(
-            slam_map=known_map,
-            robot_pos=robot_pos,
-            trajectory=trajectory,
-            scan=scan,
-            robot_theta=robot_theta,
-            frontiers=frontiers,
-            best_frontier=best_frontier,
-            path=path
-        )
-        # 雷达极坐标实时展示
-        plot_lidar_polar(ax_lidar, scan, angle_res=LIDAR_ANGLE_RES, max_dist=LIDAR_MAX_DIST)
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+            visualizer.update(
+                slam_map=known_map,
+                robot_pos=robot_pos,
+                trajectory=trajectory,
+                scan=scan,
+                robot_theta=robot_theta,
+                frontiers=frontiers,
+                best_frontier=best_frontier,
+                path=path
+            )
+            # 雷达极坐标实时展示
+            plot_lidar_polar(ax_lidar, scan, angle_res=LIDAR_ANGLE_RES, max_dist=LIDAR_MAX_DIST)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
 
-        # 每GAUGE_REFRESH_STEP步刷新一次仪表盘
-        if step % GAUGE_REFRESH_STEP == 0:
-            draw_gauge(ax_gauge_v, np.linalg.norm(robot_velocity), 0, 5, 'Velocity', 'm/s', color='blue')
-            draw_gauge(ax_gauge_a, np.linalg.norm(robot_acceleration), 0, 10, 'Acceleration', 'm/s$^2$', color='green')
-            draw_theta_gauge(ax_gauge_theta, robot_theta)
-            plt.pause(0.001)
+            # 每GAUGE_REFRESH_STEP步刷新一次仪表盘
+            if step % GAUGE_REFRESH_STEP == 0:
+                draw_gauge(ax_gauge_v, np.linalg.norm(robot_velocity), 0, 5, 'Velocity', 'm/s', color='blue')
+                draw_gauge(ax_gauge_a, np.linalg.norm(robot_acceleration), 0, 10, 'Acceleration', 'm/s$^2$',
+                           color='green')
+                draw_theta_gauge(ax_gauge_theta, robot_theta)
+                plt.pause(0.001)
 
     # 12. 返回阶段：沿返回路径移动
     else:
@@ -1030,39 +1033,40 @@ while True:
         step += 1
 
         # 可视化刷新
-        if step % 10 == 0:
+        if step % VISUALIZE_EVERY_N_STEPS == 0:
             plot_map(
                 true_map, known_map, robot_pos, trajectory, target=None,
                 scan=scan, robot_theta=robot_theta, return_path=return_path,
                 ax=ax_true, frontiers=None, smooth_path=motion_controller.smooth_path,
                 robot_velocity=robot_velocity, robot_acceleration=robot_acceleration
             )
-        visualizer.update(
-            slam_map=known_map,
-            robot_pos=robot_pos,
-            trajectory=trajectory,
-            scan=scan,
-            robot_theta=robot_theta,
-            frontiers=None,
-            best_frontier=None,
-            path=return_path
-        )
-        # 雷达极坐标实时展示
-        plot_lidar_polar(ax_lidar, scan, angle_res=LIDAR_ANGLE_RES, max_dist=LIDAR_MAX_DIST)
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+            visualizer.update(
+                slam_map=known_map,
+                robot_pos=robot_pos,
+                trajectory=trajectory,
+                scan=scan,
+                robot_theta=robot_theta,
+                frontiers=None,
+                best_frontier=None,
+                path=return_path
+            )
+            # 雷达极坐标实时展示
+            plot_lidar_polar(ax_lidar, scan, angle_res=LIDAR_ANGLE_RES, max_dist=LIDAR_MAX_DIST)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
 
-        # 仪表盘刷新
-        if step % GAUGE_REFRESH_STEP == 0:
-            draw_gauge(ax_gauge_v, np.linalg.norm(robot_velocity), 0, 5, 'Velocity', 'm/s', color='blue')
-            draw_gauge(ax_gauge_a, np.linalg.norm(robot_acceleration), 0, 10, 'Acceleration', 'm/s$^2$', color='green')
-            draw_theta_gauge(ax_gauge_theta, robot_theta)
-            plt.pause(0.001)
+            # 仪表盘刷新
+            if step % GAUGE_REFRESH_STEP == 0:
+                draw_gauge(ax_gauge_v, np.linalg.norm(robot_velocity), 0, 5, 'Velocity', 'm/s', color='blue')
+                draw_gauge(ax_gauge_a, np.linalg.norm(robot_acceleration), 0, 10, 'Acceleration', 'm/s$^2$',
+                           color='green')
+                draw_theta_gauge(ax_gauge_theta, robot_theta)
+                plt.pause(0.001)
 
-        # 判断是否到达平滑路径终点（即起点）
-        if reached_goal:
-            print('已精确返回起点！')
-            break
+            # 判断是否到达平滑路径终点（即起点）
+            if reached_goal:
+                print('已精确返回起点！')
+                break
 
 # ==================== 保存探索结果 ====================
 print("探索完成，正在保存结果...")
