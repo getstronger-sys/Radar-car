@@ -5,23 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="">
-      <change afterPath="$PROJECT_DIR$/planner/select_the_best.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/slam/motor_deviation_correction.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/map.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/map.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/comm/bluetooth.py" beforeDir="false" afterPath="$PROJECT_DIR$/comm/bluetooth.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/output/exit_detection_result.png" beforeDir="false" afterPath="$PROJECT_DIR$/output/exit_detection_result.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/output/exploration_final_map.npy" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_final_map.npy" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/output/exploration_final_map.png" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_final_map.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/output/exploration_final_map.txt" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_final_map.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/output/exploration_lidar.json" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_lidar.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/output/exploration_trajectory.npy" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_trajectory.npy" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/output/exploration_trajectory.txt" beforeDir="false" afterPath="$PROJECT_DIR$/output/exploration_trajectory.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/output/motion_history.png" beforeDir="false" afterPath="$PROJECT_DIR$/output/motion_history.png" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/output/trajectory_segments.json" beforeDir="false" afterPath="$PROJECT_DIR$/output/trajectory_segments.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/simulate_exploration_new.py" beforeDir="false" afterPath="$PROJECT_DIR$/simulate_exploration_new.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/slam/slam.py" beforeDir="false" afterPath="$PROJECT_DIR$/slam/slam.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/planner/visualize_path.py" beforeDir="false" afterPath="$PROJECT_DIR$/planner/visualize_path.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -33,6 +28,17 @@
       <list>
         <option value="Python Script" />
       </list>
+    </option>
+  </component>
+  <component name="FlaskConsoleOptions" custom-start-script="import sys; print('Python %s on %s' % (sys.version, sys.platform)); sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;from flask.cli import ScriptInfo, NoAppException&#10;for module in [&quot;main.py&quot;, &quot;wsgi.py&quot;, &quot;app.py&quot;]:&#10;    try: locals().update(ScriptInfo(app_import_path=module, create_app=None).load_app().make_shell_context()); print(&quot;\nFlask App: %s&quot; % app.import_name); break&#10;    except NoAppException: pass">
+    <envs>
+      <env key="FLASK_APP" value="app" />
+    </envs>
+    <option name="myCustomStartScript" value="import sys; print('Python %s on %s' % (sys.version, sys.platform)); sys.path.extend([WORKING_DIR_AND_PYTHON_PATHS])&#10;from flask.cli import ScriptInfo, NoAppException&#10;for module in [&quot;main.py&quot;, &quot;wsgi.py&quot;, &quot;app.py&quot;]:&#10;    try: locals().update(ScriptInfo(app_import_path=module, create_app=None).load_app().make_shell_context()); print(&quot;\nFlask App: %s&quot; % app.import_name); break&#10;    except NoAppException: pass" />
+    <option name="myEnvs">
+      <map>
+        <entry key="FLASK_APP" value="app" />
+      </map>
     </option>
   </component>
   <component name="Git.Settings">
@@ -54,78 +60,90 @@
   &quot;associatedIndex&quot;: 0
 }</component>
   <component name="ProjectId" id="2z8lhl5xzgQh1WwaW4BqdHz8aks" />
-  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
+  <component name="ProjectLevelVcsManager">
     <ConfirmationsSetting value="2" id="Add" />
   </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python 测试.Python 测试 (enhanced_test.py 内).executor": "Run",
-    "Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor": "Run",
-    "Python 测试.Python 测试 (simple_test.py 内).executor": "Run",
-    "Python 测试.Python 测试 (simple_viz_test.py 内).executor": "Run",
-    "Python 测试.Python 测试 (slamtester.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_exploration_slam.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_frontier_detect.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_slam_exception.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_system.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_system_unittest.py 内).executor": "Run",
-    "Python 测试.Python 测试 (test_visualization.py 内).executor": "Run",
-    "Python 测试.Python 测试 (visualize_path.py 内).executor": "Run",
-    "Python.SLAM.executor": "Run",
-    "Python.breezy_slam.executor": "Run",
-    "Python.breezy_slam_adapter.executor": "Run",
-    "Python.data_logger.executor": "Run",
-    "Python.demo_complete_system.executor": "Run",
-    "Python.dwa_planner.executor": "Run",
-    "Python.dynamic_window_approach.executor": "Run",
-    "Python.exit_detection.executor": "Run",
-    "Python.fast_slam1.executor": "Run",
-    "Python.frontier_detect.executor": "Run",
-    "Python.generate_map_segments.executor": "Run",
-    "Python.generate_map_trajectories.executor": "Run",
-    "Python.hybrid_a_star_planner.executor": "Run",
-    "Python.main.executor": "Run",
-    "Python.main_pipeline.executor": "Run",
-    "Python.map.executor": "Run",
-    "Python.map_viz.executor": "Run",
-    "Python.mapper.executor": "Run",
-    "Python.matplotlib_viz.executor": "Run",
-    "Python.move_to_pose.executor": "Run",
-    "Python.move_to_pose_robot.executor": "Run",
-    "Python.path_planner.executor": "Run",
-    "Python.plot.executor": "Run",
-    "Python.postprocess_path.executor": "Run",
-    "Python.roboviz_slam_demo.executor": "Run",
-    "Python.roboviz_slam_viz.executor": "Run",
-    "Python.run_slam_roboviz.executor": "Run",
-    "Python.settings.executor": "Run",
-    "Python.sim_explore_slam.executor": "Run",
-    "Python.simple_animation_demo.executor": "Run",
-    "Python.simple_exploration_demo.executor": "Run",
-    "Python.simple_test.executor": "Run",
-    "Python.simulate_exploration.executor": "Run",
-    "Python.simulate_exploration_new.executor": "Run",
-    "Python.slam.executor": "Run",
-    "Python.slam_demo.executor": "Run",
-    "Python.slam_simulation.executor": "Run",
-    "Python.test.executor": "Run",
-    "Python.test1.executor": "Run",
-    "Python.visualize_dwa_path.executor": "Run",
-    "Python.visualize_path.executor": "Run",
-    "Python.web_viz.executor": "Run",
-    "Python.测试.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "E:/OneDrive/Desktop/跑",
-    "settings.editor.selected.configurable": "vcs.Git"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python 测试.Python 测试 (enhanced_test.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (roboviz_slam_viz.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (simple_test.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (simple_viz_test.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (slamtester.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_exploration_slam.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_frontier_detect.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_pythonrobotics_import.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_slam_exception.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_system.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_system_unittest.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (test_visualization.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python 测试.Python 测试 (visualize_path.py 内).executor&quot;: &quot;Run&quot;,
+    &quot;Python.SLAM.executor&quot;: &quot;Run&quot;,
+    &quot;Python.breezy_slam.executor&quot;: &quot;Run&quot;,
+    &quot;Python.breezy_slam_adapter.executor&quot;: &quot;Run&quot;,
+    &quot;Python.cesi.executor&quot;: &quot;Run&quot;,
+    &quot;Python.data_logger.executor&quot;: &quot;Run&quot;,
+    &quot;Python.demo_complete_system.executor&quot;: &quot;Run&quot;,
+    &quot;Python.dwa_planner.executor&quot;: &quot;Run&quot;,
+    &quot;Python.dynamic_window_approach.executor&quot;: &quot;Run&quot;,
+    &quot;Python.exit_detection.executor&quot;: &quot;Run&quot;,
+    &quot;Python.fast_slam1.executor&quot;: &quot;Run&quot;,
+    &quot;Python.frontier_detect.executor&quot;: &quot;Run&quot;,
+    &quot;Python.generate_map_segments.executor&quot;: &quot;Run&quot;,
+    &quot;Python.generate_map_trajectories.executor&quot;: &quot;Run&quot;,
+    &quot;Python.hardware_interface.executor&quot;: &quot;Run&quot;,
+    &quot;Python.hybrid_a_star_planner.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main_pipeline.executor&quot;: &quot;Run&quot;,
+    &quot;Python.map.executor&quot;: &quot;Run&quot;,
+    &quot;Python.map_viz.executor&quot;: &quot;Run&quot;,
+    &quot;Python.mapper.executor&quot;: &quot;Run&quot;,
+    &quot;Python.matplotlib_viz.executor&quot;: &quot;Run&quot;,
+    &quot;Python.move_to_pose.executor&quot;: &quot;Run&quot;,
+    &quot;Python.move_to_pose_robot.executor&quot;: &quot;Run&quot;,
+    &quot;Python.path_planner.executor&quot;: &quot;Run&quot;,
+    &quot;Python.plot.executor&quot;: &quot;Run&quot;,
+    &quot;Python.postprocess_path.executor&quot;: &quot;Run&quot;,
+    &quot;Python.roboviz_slam_demo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.roboviz_slam_viz.executor&quot;: &quot;Run&quot;,
+    &quot;Python.run_slam_roboviz.executor&quot;: &quot;Run&quot;,
+    &quot;Python.settings.executor&quot;: &quot;Run&quot;,
+    &quot;Python.sim_explore_slam.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simple_animation_demo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simple_exploration_demo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simple_hardware_example.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simple_test.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simulate_exploration.executor&quot;: &quot;Run&quot;,
+    &quot;Python.simulate_exploration_new.executor&quot;: &quot;Run&quot;,
+    &quot;Python.slam.executor&quot;: &quot;Run&quot;,
+    &quot;Python.slam_demo.executor&quot;: &quot;Run&quot;,
+    &quot;Python.slam_simulation.executor&quot;: &quot;Run&quot;,
+    &quot;Python.test.executor&quot;: &quot;Run&quot;,
+    &quot;Python.test1.executor&quot;: &quot;Run&quot;,
+    &quot;Python.turning_point_example.executor&quot;: &quot;Run&quot;,
+    &quot;Python.visualize_dwa_path.executor&quot;: &quot;Run&quot;,
+    &quot;Python.visualize_path.executor&quot;: &quot;Run&quot;,
+    &quot;Python.web_viz.executor&quot;: &quot;Run&quot;,
+    &quot;Python.测试.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/PycharmProjects/PythonProject1&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;PyPlotsConfigurable&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\PycharmProjects\PythonProject1" />
@@ -146,6 +164,7 @@
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
       <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="SCRIPT_NAME" value="E:/OneDrive/文档/xwechat_files/wxid_02tq8nie0kio22_9a81/msg/file/2025-07/breezy_slam_adapter.py" />
       <option name="PARAMETERS" value="" />
       <option name="SHOW_COMMAND_LINE" value="false" />
@@ -164,11 +183,17 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-4f4e415b4190-aa17d162503b-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-243.26053.29" />
+        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-PY-252.23892.515" />
+        <option value="bundled-python-sdk-7e47963ff851-f0eec537fc84-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.23892.515" />
       </set>
     </attachedChunks>
   </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="应用程序级" UseSingleDictionary="true" transferred="true" />
+  <component name="SshConsoleOptionsProvider">
+    <option name="myEncoding" value="UTF-8" />
+    <option name="myConnectionType" value="NONE" />
+    <option name="myConnectionId" value="" />
+  </component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="默认任务">
       <changelist id="45e14498-f268-4c87-94ed-665d14b11296" name="更改" comment="" />
@@ -176,8 +201,14 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1751120701753</updated>
+      <workItem from="1756864742938" duration="209000" />
+      <workItem from="1756864977609" duration="3988000" />
+      <workItem from="1756947400890" duration="599000" />
     </task>
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
     <option name="TAB_STATES">
@@ -189,5 +220,10 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/maze_robot_project$cesi.coverage" NAME="cesi 覆盖结果" MODIFIED="1756868694400" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/maze_robot_project$main.coverage" NAME="main 覆盖结果" MODIFIED="1756868865019" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/maze_robot_project$main_pipeline.coverage" NAME="main_pipeline 覆盖结果" MODIFIED="1756865825876" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

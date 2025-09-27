@@ -6,6 +6,7 @@
 - 路径连通性检测
 - 可达区域可视化
 - 路径平滑和验证
+- 硬件对接：路径转折线，打印坐标和转向信息
 
 """
 
@@ -48,161 +49,196 @@ map_size_m = MAP_SIZE_M
 resolution = MAP_RESOLUTION
 
 
-# ========== 可视化函数 ==========
-def plot_map(grid_map: np.ndarray, 
-            start: Dict[str, float], 
-            goal: Dict[str, float], 
-            path: Optional[List[Tuple[float, float]]] = None, 
-            smoothed_path: Optional[List[Tuple[float, float]]] = None) -> None:
+# ========== 路径转折线函数 ==========
+def path_to_line_segments(path: List[Tuple[float, float]], 
+                         min_angle_threshold: float = 5.0) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
     """
-    可视化地图、起点终点、路径和光滑路径
+    将路径转换为最少数量的折线
     
     Args:
-        grid_map: 栅格地图
-        start: 起始位置
-        goal: 目标位置
-        path: 原始路径
-        smoothed_path: 平滑后的路径
+        path: 路径点列表
+        min_angle_threshold: 最小转向角度阈值（度）
+        
+    Returns:
+        折线列表，每个元素为(起点, 终点)的元组
     """
-    plt.figure(figsize=(10, 8))
-
-    # 显示背景地图
-    plt.imshow(grid_map, cmap='Greys', origin='lower',
-               extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
-
-    # 绘制障碍物点（黑色小圆点）
-    obs_y, obs_x = np.where(grid_map == 1)
-    plt.scatter(obs_x * resolution + resolution / 2,
-                obs_y * resolution + resolution / 2,
-                c='k', s=10, label='Obstacles', alpha=0.7)
-
-    # 起点（绿色圆点）与终点（红色星型）
-    plt.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
-    plt.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*', label='Goal')
-
-    # 规划路径（蓝色实线）
-    if path:
-        px, py = zip(*path)
-        plt.plot(px, py, 'b-', linewidth=2, label='Original Path', alpha=0.8)
-
-    # 平滑路径（洋红色虚线）
-    if smoothed_path:
-        spx, spy = zip(*smoothed_path)
-        plt.plot(spx, spy, 'm--', linewidth=3, label='Smoothed Path', alpha=0.9)
-
-    # 设置图像范围与标签
-    plt.xlim(0, map_size_m)
-    plt.ylim(0, map_size_m)
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.title('Path Planning Visualization')
-    plt.legend(loc='upper right')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+    if len(path) < 2:
+        return []
+    
+    line_segments = []
+    current_start = path[0]
+    current_direction = None
+    
+    for i in range(1, len(path)):
+        # 计算当前段的方向向量
+        dx = path[i][0] - path[i-1][0]
+        dy = path[i][1] - path[i-1][1]
+        current_segment_direction = np.arctan2(dy, dx)
+        
+        # 如果是第一段，记录方向
+        if current_direction is None:
+            current_direction = current_segment_direction
+        else:
+            # 计算方向变化角度（度）
+            angle_diff = np.abs(current_segment_direction - current_direction) * 180 / np.pi
+            # 处理角度跨越±180度的情况
+            if angle_diff > 180:
+                angle_diff = 360 - angle_diff
+            
+            # 如果转向角度超过阈值，创建新的折线
+            if angle_diff > min_angle_threshold:
+                line_segments.append((current_start, path[i-1]))
+                current_start = path[i-1]
+                current_direction = current_segment_direction
+    
+    # 添加最后一段
+    line_segments.append((current_start, path[-1]))
+    
+    return line_segments
 
 
-def plot_smoothed_path_comparison(grid_map: np.ndarray,
-                                 start: Dict[str, float],
-                                 goal: Dict[str, float],
-                                 original_path: List[Tuple[float, float]],
-                                 smoothed_path: List[Tuple[float, float]]) -> None:
+def calculate_turning_angles(line_segments: List[Tuple[Tuple[float, float], Tuple[float, float]]]) -> List[float]:
     """
-    专门可视化原始路径和平滑路径的对比
+    计算每条折线之间的转向角度
     
     Args:
-        grid_map: 栅格地图
-        start: 起始位置
-        goal: 目标位置
-        original_path: 原始路径
-        smoothed_path: 平滑后的路径
+        line_segments: 折线列表
+        
+    Returns:
+        转向角度列表（度，正值表示左转，负值表示右转）
     """
-    # 创建子图布局
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    if len(line_segments) < 2:
+        return []
     
-    # 计算路径长度
-    original_length = calculate_path_length(original_path)
-    smoothed_length = calculate_path_length(smoothed_path)
+    turning_angles = []
     
-    # 左图：原始路径
-    ax1.imshow(grid_map, cmap='Greys', origin='lower',
-               extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
+    for i in range(1, len(line_segments)):
+        # 前一条折线的方向向量
+        prev_end = line_segments[i-1][1]
+        prev_start = line_segments[i-1][0]
+        prev_dx = prev_end[0] - prev_start[0]
+        prev_dy = prev_end[1] - prev_start[1]
+        prev_angle = np.arctan2(prev_dy, prev_dx)
+        
+        # 当前折线的方向向量
+        curr_start = line_segments[i][0]
+        curr_end = line_segments[i][1]
+        curr_dx = curr_end[0] - curr_start[0]
+        curr_dy = curr_end[1] - curr_start[1]
+        curr_angle = np.arctan2(curr_dy, curr_dx)
+        
+        # 计算转向角度
+        angle_diff = curr_angle - prev_angle
+        
+        # 将角度限制在-180到180度之间
+        while angle_diff > np.pi:
+            angle_diff -= 2 * np.pi
+        while angle_diff < -np.pi:
+            angle_diff += 2 * np.pi
+        
+        # 转换为度
+        turning_angle = angle_diff * 180 / np.pi
+        turning_angles.append(turning_angle)
     
-    # 绘制障碍物
-    obs_y, obs_x = np.where(grid_map == 1)
-    ax1.scatter(obs_x * resolution + resolution / 2,
-                obs_y * resolution + resolution / 2,
-                c='k', s=10, alpha=0.7)
-    
-    # 起点和终点
-    ax1.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
-    ax1.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*', label='Goal')
-    
-    # 原始路径
-    px, py = zip(*original_path)
-    ax1.plot(px, py, 'b-', linewidth=3, label=f'Original Path ({len(original_path)} points)')
-    
-    # 标记路径点
-    ax1.scatter(px, py, c='blue', s=20, alpha=0.6, zorder=5)
-    
-    ax1.set_xlim(0, map_size_m)
-    ax1.set_ylim(0, map_size_m)
-    ax1.set_xlabel('X [m]')
-    ax1.set_ylabel('Y [m]')
-    ax1.set_title(f'Original Path\nLength: {original_length:.3f}m')
-    ax1.legend(loc='upper right')
-    ax1.grid(True, alpha=0.3)
-    
-    # 右图：平滑路径
-    ax2.imshow(grid_map, cmap='Greys', origin='lower',
-               extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
-    
-    # 绘制障碍物
-    ax2.scatter(obs_x * resolution + resolution / 2,
-                obs_y * resolution + resolution / 2,
-                c='k', s=10, alpha=0.7)
-    
-    # 起点和终点
-    ax2.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
-    ax2.scatter([goal['x']], [goal['y']], c='r', s=100, marker='*', label='Goal')
-    
-    # 平滑路径
-    spx, spy = zip(*smoothed_path)
-    ax2.plot(spx, spy, 'm-', linewidth=3, label=f'Smoothed Path ({len(smoothed_path)} points)')
-    
-    # 标记路径点
-    ax2.scatter(spx, spy, c='magenta', s=20, alpha=0.6, zorder=5)
-    
-    ax2.set_xlim(0, map_size_m)
-    ax2.set_ylim(0, map_size_m)
-    ax2.set_xlabel('X [m]')
-    ax2.set_ylabel('Y [m]')
-    ax2.set_title(f'Smoothed Path\nLength: {smoothed_length:.3f}m')
-    ax2.legend(loc='upper right')
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
-    # 打印对比信息
-    print(f"\n📊 路径对比信息:")
-    print(f"   原始路径: {len(original_path)} 个点, 长度: {original_length:.3f}m")
-    print(f"   平滑路径: {len(smoothed_path)} 个点, 长度: {smoothed_length:.3f}m")
-    print(f"   长度变化: {smoothed_length - original_length:+.3f}m ({((smoothed_length - original_length) / original_length * 100):+.1f}%)")
+    return turning_angles
 
 
-def plot_smoothed_path_only(grid_map: np.ndarray,
+def print_line_segments_info(line_segments: List[Tuple[Tuple[float, float], Tuple[float, float]]], 
+                           turning_angles: List[float]) -> None:
+    """
+    打印折线信息，包括坐标和转向角度，并输出到文件
+    
+    Args:
+        line_segments: 折线列表
+        turning_angles: 转向角度列表
+    """
+    print("\n" + "=" * 80)
+    print("🔧 硬件对接 - 路径转折线信息")
+    print("=" * 80)
+    
+    print(f"\n📏 折线总数: {len(line_segments)}")
+    
+    # 准备输出到文件的数据
+    output_lines = []
+    
+    for i, segment in enumerate(line_segments):
+        start_x, start_y = segment[0]
+        end_x, end_y = segment[1]
+        segment_length = np.hypot(end_x - start_x, end_y - start_y)
+        
+        print(f"\n📍 折线 {i+1}:")
+        print(f"   起点: ({start_x:.3f}, {start_y:.3f})")
+        print(f"   终点: ({end_x:.3f}, {end_y:.3f})")
+        print(f"   长度: {segment_length:.3f}m")
+        
+        # 计算方向角度
+        dx = end_x - start_x
+        dy = end_y - start_y
+        direction_angle = np.arctan2(dy, dx) * 180 / np.pi
+        print(f"   方向: {direction_angle:.1f}°")
+        
+        # 打印转向信息（除了第一条折线）
+        if i > 0:
+            turning_angle = turning_angles[i-1]
+            turning_direction = "左转" if turning_angle > 0 else "右转"
+            print(f"   转向: {turning_direction} {abs(turning_angle):.1f}°")
+            
+            # 添加到输出文件（格式：Px y 转向）
+            output_lines.append(f"P{start_x:.3f} {start_y:.3f} {turning_angle:.1f}")
+        else:
+            # 第一条折线，转向为0
+            output_lines.append(f"P{start_x:.3f} {start_y:.3f} 0.0")
+    
+    # 添加最后一条折线的终点
+    if line_segments:
+        last_end_x, last_end_y = line_segments[-1][1]
+        output_lines.append(f"P{last_end_x:.3f} {last_end_y:.3f} 0.0")
+    
+    print(f"\n🔄 总转向次数: {len(turning_angles)}")
+    if turning_angles:
+        max_turn = max(turning_angles, key=abs)
+        print(f"   最大转向角度: {max_turn:.1f}°")
+        avg_turn = np.mean([abs(angle) for angle in turning_angles])
+        print(f"   平均转向角度: {avg_turn:.1f}°")
+    
+    # 输出到文件
+    output_file_path = "output/hardware_path_data.txt"
+    try:
+        # 确保输出目录存在
+        os.makedirs("output", exist_ok=True)
+        
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            f.write("# 硬件对接路径数据 - 格式：Px y 转向\n")
+            f.write(f"# 生成时间：{__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"# 折线总数：{len(line_segments)}\n")
+            f.write(f"# 总转向次数：{len(turning_angles)}\n")
+            f.write("# 数据格式说明：Px y 转向 - 其中转向为0表示直行，正值表示左转，负值表示右转\n\n")
+            
+            for i, line in enumerate(output_lines):
+                f.write(f"{line}\n")
+        
+        print(f"\n💾 硬件路径数据已保存到: {output_file_path}")
+        print("📄 文件格式: Px y 转向")
+        print("📋 数据内容:")
+        for i, line in enumerate(output_lines):
+            print(f"   {i+1:2d}: {line}")
+            
+    except Exception as e:
+        print(f"\n❌ 保存文件失败: {e}")
+
+
+def plot_line_segments_only(grid_map: np.ndarray,
                            start: Dict[str, float],
                            goal: Dict[str, float],
-                           smoothed_path: List[Tuple[float, float]]) -> None:
+                           line_segments: List[Tuple[Tuple[float, float], Tuple[float, float]]]) -> None:
     """
-    单独可视化平滑后的路径
+    只可视化折线，用于硬件对接
     
     Args:
         grid_map: 栅格地图
         start: 起始位置
         goal: 目标位置
-        smoothed_path: 平滑后的路径
+        line_segments: 折线列表
     """
     plt.figure(figsize=(12, 10))
     
@@ -220,35 +256,61 @@ def plot_smoothed_path_only(grid_map: np.ndarray,
     plt.scatter([start['x']], [start['y']], c='g', s=120, marker='o', label='Start', zorder=10)
     plt.scatter([goal['x']], [goal['y']], c='r', s=120, marker='*', label='Goal', zorder=10)
     
-    # 平滑路径
-    spx, spy = zip(*smoothed_path)
-    plt.plot(spx, spy, 'm-', linewidth=4, label='Smoothed Path', alpha=0.9, zorder=5)
-    
-    # 标记路径点
-    plt.scatter(spx, spy, c='magenta', s=30, alpha=0.8, zorder=6, label='Path Points')
-    
-    # 突出显示起点和终点
-    plt.scatter([spx[0]], [spy[0]], c='lime', s=150, marker='o', edgecolors='green', linewidth=3, zorder=11, label='Path Start')
-    plt.scatter([spx[-1]], [spy[-1]], c='orange', s=150, marker='*', edgecolors='red', linewidth=3, zorder=11, label='Path End')
+    # 绘制折线
+    colors = plt.cm.Set3(np.linspace(0, 1, len(line_segments)))
+    for i, (segment, color) in enumerate(zip(line_segments, colors)):
+        start_point = segment[0]
+        end_point = segment[1]
+        
+        # 绘制折线
+        plt.plot([start_point[0], end_point[0]], [start_point[1], end_point[1]], 
+                color=color, linewidth=4, alpha=0.8, label=f'Segment {i+1}')
+        
+        # 标记折线端点
+        plt.scatter([start_point[0]], [start_point[1]], c=color, s=60, alpha=0.8, zorder=6)
+        plt.scatter([end_point[0]], [end_point[1]], c=color, s=60, alpha=0.8, zorder=6)
     
     # 设置图像范围与标签
     plt.xlim(0, map_size_m)
     plt.ylim(0, map_size_m)
     plt.xlabel('X [m]', fontsize=12)
     plt.ylabel('Y [m]', fontsize=12)
-    plt.title('Smoothed Path Visualization', fontsize=14, fontweight='bold')
+    plt.title('Hardware Integration - Line Segments Visualization', fontsize=14, fontweight='bold')
     plt.legend(loc='upper right', fontsize=10)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
-    
-    # 打印平滑路径信息
-    path_length = calculate_path_length(smoothed_path)
-    print(f"\n🎯 平滑路径信息:")
-    print(f"   路径点数: {len(smoothed_path)}")
-    print(f"   路径长度: {path_length:.3f}m")
-    print(f"   起点: ({spx[0]:.3f}, {spy[0]:.3f})")
-    print(f"   终点: ({spx[-1]:.3f}, {spy[-1]:.3f})")
+
+
+# ========== 注释掉的可视化函数 ==========
+def plot_map(grid_map: np.ndarray, 
+            start: Dict[str, float], 
+            goal: Dict[str, float], 
+            path: Optional[List[Tuple[float, float]]] = None, 
+            smoothed_path: Optional[List[Tuple[float, float]]] = None) -> None:
+    # 注释掉的可视化函数
+    pass
+
+def plot_smoothed_path_comparison(grid_map: np.ndarray,
+                                 start: Dict[str, float],
+                                 goal: Dict[str, float],
+                                 original_path: List[Tuple[float, float]],
+                                 smoothed_path: List[Tuple[float, float]]) -> None:
+    # 注释掉的可视化函数
+    pass
+
+def plot_smoothed_path_only(grid_map: np.ndarray,
+                           start: Dict[str, float],
+                           goal: Dict[str, float],
+                           smoothed_path: List[Tuple[float, float]]) -> None:
+    # 注释掉的可视化函数
+    pass
+
+def plot_reachable_area(grid_map: np.ndarray, 
+                       start: Dict[str, float], 
+                       resolution: float) -> None:
+    # 注释掉的可视化函数
+    pass
 
 
 def is_connected(grid_map: np.ndarray, 
@@ -301,66 +363,6 @@ def is_connected(grid_map: np.ndarray,
                 queue.append((nx, ny))
     
     return False
-
-
-def plot_reachable_area(grid_map: np.ndarray, 
-                       start: Dict[str, float], 
-                       resolution: float) -> None:
-    """
-    可视化起点flood fill可达的所有格子
-    
-    Args:
-        grid_map: 栅格地图
-        start: 起始位置
-        resolution: 地图分辨率
-    """
-    h, w = grid_map.shape
-    visited = np.zeros_like(grid_map, dtype=bool)
-    
-    # 转换为格子坐标
-    sx = int(start['x'] / resolution)
-    sy = int(start['y'] / resolution)
-    
-    # 检查起点是否在障碍物内
-    if grid_map[sy, sx] != 0:
-        print("⚠️  起点在障碍物内，无法可视化可达区域！")
-        return
-    
-    # Flood Fill算法
-    queue = deque([(sx, sy)])
-    visited[sy, sx] = True
-    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-    
-    while queue:
-        x, y = queue.popleft()
-        for dx, dy in directions:
-            nx, ny = x + dx, y + dy
-            if (0 <= nx < w and 0 <= ny < h and 
-                not visited[ny, nx] and grid_map[ny, nx] == 0):
-                visited[ny, nx] = True
-                queue.append((nx, ny))
-    
-    # 可视化可达区域
-    plt.figure(figsize=(10, 8))
-    plt.imshow(grid_map, cmap='Greys', origin='lower', 
-               extent=(0, map_size_m, 0, map_size_m), alpha=0.3)
-    
-    # 可达区域用浅蓝色显示
-    reachable_y, reachable_x = np.where(visited)
-    plt.scatter(reachable_x * resolution + resolution / 2, 
-                reachable_y * resolution + resolution / 2, 
-                c='cyan', s=15, alpha=0.6, label='Reachable Area')
-    
-    # 标记起点
-    plt.scatter([start['x']], [start['y']], c='g', s=100, marker='o', label='Start')
-    
-    plt.xlabel('X [m]')
-    plt.ylabel('Y [m]')
-    plt.title('Reachable Area from Start Point')
-    plt.legend(loc='upper right')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
 
 
 def calculate_path_length(path: List[Tuple[float, float]]) -> float:
@@ -548,42 +550,32 @@ def main():
     simple_path, pythonrobotics_path, main_path = run_path_planning_algorithms(
         grid_map, start, goal)
     
-    # 可视化结果
-    print("\n📊 可视化结果")
-    # 判断主路径是否有效（点数大于1）
-    valid_main_path = main_path and len(main_path) > 1
-    path_to_show = main_path if valid_main_path else (simple_path if simple_path and len(simple_path) > 1 else None)
-    if path_to_show:
-        print(f"   {'主路径' if valid_main_path else 'simple_path'}长度: {len(path_to_show)} 个点")
-        # 1. 使用主路径或simple_path进行可视化
-        print("   1️⃣ 显示原始路径图...")
-        plot_map(grid_map, start, goal, path=path_to_show)
-        # 2. 生成带障碍物约束的平滑路径进行对比
-        print("\n🔄 生成带障碍物约束的平滑路径...")
-        try:
-            from planner.path_planner import smooth_path_with_obstacle_avoidance
-            original_path_for_smoothing = path_to_show
-            smoothed_path = smooth_path_with_obstacle_avoidance(
-                original_path_for_smoothing, grid_map, resolution, initial_smoothing=0.2, min_smoothing=0.01, max_iter=20, verbose=True)
-            if smoothed_path and len(smoothed_path) > 2 and smoothed_path != original_path_for_smoothing:
-                print(f"   避障平滑路径生成成功: {len(smoothed_path)} 个点")
-                print("   2️⃣ 显示路径对比图...")
-                plot_smoothed_path_comparison(grid_map, start, goal, original_path_for_smoothing, smoothed_path)
-                print("   3️⃣ 单独显示平滑路径...")
-                plot_smoothed_path_only(grid_map, start, goal, smoothed_path)
-            else:
-                print("   ⚠️  避障平滑路径生成失败或与原始路径无差异")
-        except Exception as e:
-            print(f"   ⚠️  避障平滑路径生成错误: {e}")
-            import traceback
-            traceback.print_exc()
-        print("\n🔍 显示起点可达区域...")
-        plot_reachable_area(grid_map, start, resolution)
-        print_goal_environment(grid_map, goal, resolution)
+    # 硬件对接：路径转折线
+    print("\n🔧 硬件对接处理")
+    # 选择有效路径进行折线转换
+    path_to_convert = main_path if main_path and len(main_path) > 1 else (
+        simple_path if simple_path and len(simple_path) > 1 else None)
+    
+    if path_to_convert:
+        print(f"   使用路径长度: {len(path_to_convert)} 个点")
+        
+        # 转换为折线
+        line_segments = path_to_line_segments(path_to_convert, min_angle_threshold=5.0)
+        
+        # 计算转向角度
+        turning_angles = calculate_turning_angles(line_segments)
+        
+        # 打印折线信息
+        print_line_segments_info(line_segments, turning_angles)
+        
+        # 可视化折线
+        print("\n📊 可视化折线...")
+        plot_line_segments_only(grid_map, start, goal, line_segments)
+        
     else:
-        print("❌ 没有找到有效路径，无法可视化")
-        plot_reachable_area(grid_map, start, resolution)
-    print("\n✅ 路径规划测试完成")
+        print("❌ 没有找到有效路径，无法转换为折线")
+    
+    print("\n✅ 硬件对接测试完成")
 
 
 if __name__ == "__main__":

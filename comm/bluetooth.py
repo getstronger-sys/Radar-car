@@ -1,97 +1,56 @@
-# comm/bluetooth.py
-"""
 import serial
+import serial.tools.list_ports
+import threading
 
-class BluetoothComm:
-    def __init__(self, port='COM4', baudrate=115200, timeout=1):
-        self.ser = serial.Serial(port, baudrate, timeout=timeout)
-        print(f"✅ Bluetooth connected on {port} @ {baudrate} bps")
+def list_ports():
+    """列出所有可用串口"""
+    ports = list(serial.tools.list_ports.comports())
+    for i, port in enumerate(ports):
+        print(f"{i}: {port.device} - {port.description}")
+    return ports
 
-    def receive_data(self):
-        ""
-        从串口接收一帧数据，格式示例：
-        L:angle1,dist1;angle2,dist2;...|P:x,y,theta\\n
-        ""
+def read_from_port(ser):
+    """不断读取串口数据"""
+    while True:
         try:
-            line = self.ser.readline().decode().strip()
-            if not line.startswith("L:") or "|P:" not in line:
-                return [], {'x': 0, 'y': 0, 'theta': 0}
-
-            lidar_raw, pose_raw = line.split("|P:")
-            lidar_raw = lidar_raw[2:]  # remove "L:"
-            scan_points = []
-            for pair in lidar_raw.split(";"):
-                if not pair:
-                    continue
-                angle, dist = map(float, pair.split(","))
-                x = dist * 0.001 * math.cos(math.radians(angle))
-                y = dist * 0.001 * math.sin(math.radians(angle))
-                scan_points.append((x, y))
-
-            x, y, theta = map(float, pose_raw.split(","))
-            pose = {'x': x, 'y': y, 'theta': theta}
-            return scan_points, pose
-
+            data = ser.readline()
+            if data:
+                print(f"[HC-04]: {data.decode('utf-8', errors='ignore').strip()}")
         except Exception as e:
-            print(f"[BluetoothComm] Error receiving data: {e}")
-            return [], {'x': 0, 'y': 0, 'theta': 0}
+            print(f"读取错误: {e}")
+            break
 
-    def send_target(self, pose):
-        ""
-        发送目标位姿 (x,y,theta) 给机器人，格式：
-        T:x,y,theta\\n
-        ""
-        try:
-            command = f"T:{pose['x']:.2f},{pose['y']:.2f},{pose['theta']:.2f}\\n"
-            self.ser.write(command.encode())
-        except Exception as e:
-            print(f"[BluetoothComm] Error sending target: {e}")
+def main():
+    ports = list_ports()
+    if not ports:
+        print("没有找到串口设备！")
+        return
 
-    def close(self):
-        self.ser.close()
-"""
+    index = int(input("选择要连接的串口序号: "))
+    port_name = ports[index].device
+    baud_rate = int(input("输入波特率 (默认9600): ") or 9600)
 
-import time
-import numpy as np
+    try:
+        ser = serial.Serial(port_name, baud_rate, timeout=1)
+        print(f"已连接 {port_name}，波特率 {baud_rate}")
 
-class BluetoothCommMock:
-    def __init__(self):
-        self.pose = {'x': 2.5, 'y': 2.5, 'theta': 0.0}  # 起点
-        self.path = []
-        self.path_index = 0
+        # 开启线程读取数据
+        t = threading.Thread(target=read_from_port, args=(ser,))
+        t.daemon = True
+        t.start()
 
-    def receive_data(self):
-        # 模拟每次返回激光数据和当前机器人位姿
-        distances = [3000] * 360  # 模拟激光数据，没障碍
-        return distances, self.pose
+        # 主循环发送数据
+        while True:
+            msg = input()
+            if msg.lower() == 'exit':
+                break
+            ser.write((msg + '\n').encode('utf-8'))
 
-    def send_target(self, target_pose):
-        # 收到目标点，存路径点
-        if self.path_index >= len(self.path):
-            self.path = []
-            self.path_index = 0
+    except Exception as e:
+        print(f"连接失败: {e}")
+    finally:
+        ser.close()
+        print("串口已关闭")
 
-        self.path.append(target_pose)
-
-    def move_along_path(self):
-        # 简单每调用一次，机器人移动一点向目标
-        if self.path_index < len(self.path):
-            target = self.path[self.path_index]
-            # 简单直线一步一步走
-            dx = target['x'] - self.pose['x']
-            dy = target['y'] - self.pose['y']
-            dist = (dx**2 + dy**2)**0.5
-            step = 0.1  # 每步走0.1m
-
-            if dist < step:
-                self.pose = target
-                self.path_index += 1
-            else:
-                self.pose['x'] += step * dx / dist
-                self.pose['y'] += step * dy / dist
-
-            # 更新朝向
-            self.pose['theta'] = np.arctan2(dy, dx)
-
-    def close(self):
-        pass
+if __name__ == "__main__":
+    main()

@@ -16,8 +16,8 @@ EXIT_POSITION = {'x': 11.7000, 'y': 14.7000, 'theta': 0.0}  # 自动更新终点
 如果把机器人看成长方形，就需要考虑机器人的朝向（θ）
 碰撞检测变成"旋转矩形与障碍物"的碰撞判断，计算更复杂。
 """
-ROBOT_RADIUS = 0.005  # 包裹机器人外形的最小圆的半径 米
-ROBOT_LENGTH = 0.3  # 从前端到后端的物理距离 米
+ROBOT_RADIUS = 0.01  # 包裹机器人外形的最小圆的半径 米
+ROBOT_LENGTH = 0.25  # 从前端到后端的物理距离 米
 
 # 控制与导航
 USE_DWA = True  # 是否启用 DWA 局部避障
@@ -28,8 +28,8 @@ LIDAR_SCAN_SIZE = 360
 LIDAR_MAX_DISTANCE = 4000  # 毫米
 
 # 蓝牙通信
-BLUETOOTH_PORT = 'COM4'
-BLUETOOTH_BAUDRATE = 115200
+BLUETOOTH_PORT = 'COM3'
+BLUETOOTH_BAUDRATE = 9600
 
 # 电机偏差校正参数
 MOTOR_LEFT_CORRECTION = 1.0  # 左电机校正系数，>1表示左轮偏慢
